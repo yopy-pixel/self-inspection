@@ -168,8 +168,17 @@ fun SettingsScreen(
                         PasswordVisualTransformation()
                     },
                     trailing = {
+                        // ラベルは状態ではなく「押すとどうなるか」を示す。
+                        // 旧: 表示中 "•••" / 伏せ字 "abc"（意味が伝わらない）
                         TextButton(onClick = { showToken = !showToken }) {
-                            Text(if (showToken) "•••" else "abc", color = c.ink2, fontSize = 11.sp)
+                            Text(
+                                text = stringResource(
+                                    if (showToken) R.string.settings_token_hide
+                                    else R.string.settings_token_show
+                                ),
+                                color = c.ink2,
+                                fontSize = 11.sp
+                            )
                         }
                     }
                 )

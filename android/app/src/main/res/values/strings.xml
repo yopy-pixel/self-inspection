@@ -71,6 +71,9 @@
     <string name="settings_endpoint">Endpoint (https)</string>
     <string name="settings_device_id">Device ID</string>
     <string name="settings_token">Token</string>
+    <!-- トークン欄の表示切替。ラベルは「押すとどうなるか」を示す。 -->
+    <string name="settings_token_show">show</string>
+    <string name="settings_token_hide">hide</string>
     <string name="settings_paste">Paste credentials</string>
     <string name="settings_paste_hint">Paste the JSON from the server\'s device registration</string>
     <string name="settings_test">Test connection</string>
