@@ -284,10 +284,22 @@ private fun AppRankingCard(state: DashboardState) {
             title = stringResource(R.string.label_top_apps),
             // 今日以外を見ているときは日付を出す。
             // **「いつの話か」が分からない数字は判断の役に立たない。**
+            //
+            // さらに**その日の合計**も出す。リングは常に「今日」を指すので、
+            // 過去の日を選んだときに合計がどこにも出ないと、
+            // 内訳は見えても「で、何時間？」が分からない。
             hint = if (state.isTodaySelected) {
                 stringResource(R.string.label_today).lowercase()
             } else {
-                state.selectedDate?.let { DurationFormat.shortDate(it) }
+                state.selectedDate?.let { date ->
+                    "${DurationFormat.shortDate(date)} · " +
+                        DurationFormat.long(state.selectedMillis)
+                }
+            },
+            hintColor = if (!state.isTodaySelected && state.selectedExceeded) {
+                c.danger
+            } else {
+                null
             }
         )
         if (apps.isEmpty()) {
@@ -386,9 +398,10 @@ private fun WeekCard(state: DashboardState, onSelectDate: (java.time.LocalDate?)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(72.dp),
+                // 棒の上に各日の実時間を出す分だけ高くする。
+                .height(96.dp),
             verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             val max = state.days.maxOfOrNull { it.millis }?.coerceAtLeast(1L) ?: 1L
             state.days.forEach { day ->
@@ -408,6 +421,29 @@ private fun WeekCard(state: DashboardState, onSelectDate: (java.time.LocalDate?)
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Bottom
                 ) {
+                    // **各日の実時間。** 平均だけでは「どの日が重かったか」が
+                    // 分からない。平均は傾向、各日は判断の材料になる。
+                    //
+                    // 表記は SPEC §1 の省スペース形（`3h42` / `48m`）。
+                    // 7列に収める必要があるため `3h 42m` の空白入りは使わない。
+                    Text(
+                        // 記録が無い日は 0m ではなく記号。0m は
+                        // 「測った結果ゼロ」に見えるが、実際は不明なことが多い。
+                        text = if (day.millis > 0) {
+                            DurationFormat.compact(day.millis)
+                        } else {
+                            stringResource(R.string.widget_none)
+                        },
+                        fontSize = 9.5.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = when {
+                            day.exceeded -> c.danger
+                            isSelected -> c.ink
+                            else -> c.ink3
+                        },
+                        maxLines = 1
+                    )
+                    Spacer(Modifier.height(4.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -490,7 +526,12 @@ private fun Card(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun CardHeader(title: String, hint: String?) {
+private fun CardHeader(
+    title: String,
+    hint: String?,
+    /** 見出しの右側を強調したいとき（超過など）。既定は通常の三次色。 */
+    hintColor: androidx.compose.ui.graphics.Color? = null
+) {
     val c = LocalKaizenColors.current
     Row(
         modifier = Modifier
@@ -509,7 +550,7 @@ private fun CardHeader(title: String, hint: String?) {
                 text = hint,
                 fontSize = 11.sp,
                 style = TabularNumberStyle,
-                color = c.ink3
+                color = hintColor ?: c.ink3
             )
         }
     }

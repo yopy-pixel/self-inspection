@@ -64,7 +64,11 @@ data class DashboardState(
     val selectedExceeded: Boolean = false,
     /** 今日を含む直近7日。古い順。 */
     val days: List<DayUsageRow> = emptyList(),
-    /** 直近7日の平均（今日を含まない）。 */
+    /**
+     * 直近7日の平均（今日を除く）。
+     *
+     * **記録が無い日（0）は母数に入れない。** 詳細は `load()` を参照。
+     */
     val averageMillis: Long = 0L,
     /** 前回の収集完了時刻。null = 未収集。 */
     val lastCollectedAt: Long? = null,
@@ -164,7 +168,13 @@ class DashboardViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
 
-        // 平均は今日を除く（今日はまだ途中のため）
+        // 平均は今日を除く（今日はまだ途中のため）。
+        //
+        // **記録が無い日（0）は母数に入れない。** アプリを入れる前の日や
+        // 収集が止まっていた日を 0 として数えると、平均が不当に下がる。
+        // 一方「記録はあるが使わなかった日」も 0 になり区別できないため、
+        // 除外する方が安全側（過小評価しない）。
+        // チャートでも 0 の日は `—` と表示しており、考え方を揃えている。
         val past = days.dropLast(1).filter { it.millis > 0 }
         val average = if (past.isEmpty()) 0L else past.sumOf { it.millis } / past.size
 
