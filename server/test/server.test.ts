@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -13,7 +13,19 @@ import { tokenFromCookie, esc, fmt } from "../src/dashboard.ts";
 import type { NormalizedEvent } from "../src/validate.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const schema = readFileSync(join(here, "..", "migrations", "0001_init.sql"), "utf8");
+const migrationsDir = join(here, "..", "migrations");
+
+/**
+ * スキーマは**マイグレーションを全部**流す。
+ *
+ * 0001 だけを読むと、後から足したテーブルを使うコードがテストでだけ
+ * 落ちる（逆に、本番に無いテーブルを前提にしたテストが通る）。
+ */
+const schema = readdirSync(migrationsDir)
+  .filter((f) => f.endsWith(".sql"))
+  .sort()
+  .map((f) => readFileSync(join(migrationsDir, f), "utf8"))
+  .join("\n");
 
 const DEVICE = "11111111-1111-1111-1111-111111111111";
 const TOKEN = "test-token-abc";
@@ -875,6 +887,298 @@ describe("ブラウザ用の画面", () => {
     assert.equal(body.includes("<script>alert(1)</script>"), false);
     // エスケープされた形でなら現れてよい
     assert.match(body, /&lt;script&gt;/);
+  });
+});
+
+// ===========================================================================
+describe("ペアコードとブラウザセッション", () => {
+  const now = Date.UTC(2026, 8, 14, 12, 0, 0);
+  const today = "2026-09-14";
+
+  async function envWithDevice() {
+    const db = freshDb();
+    await seedDevice(db, DEVICE, await hashToken(TOKEN), "phone");
+    return { DB: db };
+  }
+
+  function ua(name = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0 Safari/537.36") {
+    return name;
+  }
+
+  function get(path: string, cookie?: string): Request {
+    const headers: Record<string, string> = { "user-agent": ua() };
+    if (cookie) headers["cookie"] = cookie;
+    return new Request(`https://example.com${path}`, { method: "GET", headers });
+  }
+
+  function postForm(
+    path: string,
+    body: string,
+    opts: { cookie?: string; ua?: string } = {}
+  ): Request {
+    const headers: Record<string, string> = {
+      "content-type": "application/x-www-form-urlencoded",
+      "user-agent": opts.ua ?? ua(),
+    };
+    if (opts.cookie) headers["cookie"] = opts.cookie;
+    return new Request(`https://example.com${path}`, { method: "POST", headers, body });
+  }
+
+  function postJson(path: string, body: unknown, token?: string): Request {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (token) headers["authorization"] = `Bearer ${token}`;
+    return new Request(`https://example.com${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** Set-Cookie からセッショントークンを取り出す。 */
+  function cookieValue(res: Response): string {
+    const raw = res.headers.get("set-cookie") ?? "";
+    const m = /sk_token=([^;]*)/.exec(raw);
+    return m ? decodeURIComponent(m[1]) : "";
+  }
+
+  /** アプリ（端末トークン）としてコードを発行する。 */
+  async function mintViaApp(env: { DB: ReturnType<typeof freshDb> }, at = now) {
+    const res = await handle(postJson("/api/v1/pair", {}, TOKEN), env as never, at);
+    assert.equal(res.status, 200);
+    return (await res.json()) as { code: string; expiresAt: number };
+  }
+
+  // ---- 発行 ----
+
+  test("端末トークンでコードを発行できる", async () => {
+    const env = await envWithDevice();
+    const { code, expiresAt } = await mintViaApp(env);
+
+    assert.equal(code.length, 8);
+    assert.match(code, /^[0-9A-HJKMNP-TV-Z]{8}$/);
+    assert.equal(expiresAt, now + 3 * 60_000);
+  });
+
+  test("未認証ではコードを発行できない", async () => {
+    // **ここが要**: 未認証で発行できると、ログイン画面を開いた誰もが
+    // ログインできてしまい、認証が丸ごと無意味になる。
+    const env = await envWithDevice();
+    const res = await handle(postJson("/api/v1/pair", {}), env, now);
+    assert.equal(res.status, 401);
+  });
+
+  test("でたらめなトークンでは発行できない", async () => {
+    const env = await envWithDevice();
+    const res = await handle(postJson("/api/v1/pair", {}, "wrong"), env, now);
+    assert.equal(res.status, 401);
+  });
+
+  test("コードは毎回ちがう", async () => {
+    const env = await envWithDevice();
+    const a = await mintViaApp(env);
+    const b = await mintViaApp(env);
+    assert.notEqual(a.code, b.code);
+  });
+
+  // ---- 引き換え ----
+
+  test("コードで新しいブラウザがログインできる", async () => {
+    const env = await envWithDevice();
+    const { code } = await mintViaApp(env);
+
+    const res = await handle(postForm("/dashboard", `pair=${code}`), env, now);
+    assert.equal(res.status, 303);
+
+    const session = cookieValue(res);
+    assert.ok(session.length > 0);
+    // **端末トークンが Cookie に入っていない**（セッションは別物）。
+    assert.notEqual(session, TOKEN);
+
+    const page = await handle(get("/", `sk_token=${session}`), env, now);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /Today/);
+  });
+
+  test("コードは1回しか使えない", async () => {
+    const env = await envWithDevice();
+    const { code } = await mintViaApp(env);
+
+    const first = await handle(postForm("/dashboard", `pair=${code}`), env, now);
+    assert.equal(first.status, 303);
+
+    const second = await handle(postForm("/dashboard", `pair=${code}`), env, now);
+    assert.equal(second.status, 401);
+    assert.equal(second.headers.get("set-cookie"), null);
+  });
+
+  test("期限切れのコードは拒否する", async () => {
+    const env = await envWithDevice();
+    const { code } = await mintViaApp(env);
+
+    const late = now + 3 * 60_000 + 1;
+    const res = await handle(postForm("/dashboard", `pair=${code}`), env, late);
+    assert.equal(res.status, 401);
+  });
+
+  test("でたらめなコードは拒否する", async () => {
+    const env = await envWithDevice();
+    const res = await handle(postForm("/dashboard", "pair=ZZZZZZZZ"), env, now);
+    assert.equal(res.status, 401);
+  });
+
+  test("小文字・空白入りでも通る", async () => {
+    // 人が書き写す前提なので、大文字小文字や区切りで失敗させない。
+    const env = await envWithDevice();
+    const { code } = await mintViaApp(env);
+
+    const messy = `  ${code.toLowerCase().slice(0, 4)} ${code.toLowerCase().slice(4)}  `;
+    const res = await handle(postForm("/dashboard", `pair=${encodeURIComponent(messy)}`), env, now);
+    assert.equal(res.status, 303);
+  });
+
+  // ---- セッション ----
+
+  /** ログイン画面に戻されている＝そのセッションは死んでいる。 */
+  function isDead(body: string): boolean {
+    return body.includes("Pairing code");
+  }
+
+  test("ブラウザごとに独立したセッションになる", async () => {
+    const env = await envWithDevice();
+    const a = cookieValue(await handle(postForm("/dashboard", `token=${TOKEN}`), env, now));
+    const b = cookieValue(await handle(postForm("/dashboard", `token=${TOKEN}`), env, now));
+
+    assert.notEqual(a, b);
+
+    const list = await (await handle(get("/", `sk_token=${a}`), env, now)).text();
+    const ids = [...list.matchAll(/name="revoke" value="([^"]+)"/g)].map((m) => m[1]);
+    assert.equal(ids.length, 2, "2台分が一覧に出ること");
+
+    // 片方だけ失効させる
+    await handle(postForm("/dashboard", `revoke=${ids[0]}`, { cookie: `sk_token=${a}` }), env, now);
+
+    const aDead = isDead(await (await handle(get("/", `sk_token=${a}`), env, now)).text());
+    const bDead = isDead(await (await handle(get("/", `sk_token=${b}`), env, now)).text());
+    assert.notEqual(aDead, bDead, "片方だけが失効すること");
+  });
+
+  test("失効させたセッションはサーバー側でもう通らない", async () => {
+    // **これが本当のサインアウト。** Cookie を消すだけでは、控えられた
+    // トークンが生き続けてしまう。
+    const env = await envWithDevice();
+    const session = cookieValue(await handle(postForm("/dashboard", `token=${TOKEN}`), env, now));
+
+    const page = await handle(get("/", `sk_token=${session}`), env, now);
+    const id = /name="revoke" value="([^"]+)"/.exec(await page.text())?.[1];
+    assert.ok(id);
+
+    await handle(postForm("/dashboard", `revoke=${id}`, { cookie: `sk_token=${session}` }), env, now);
+
+    const after = await handle(get("/", `sk_token=${session}`), env, now);
+    assert.match(await after.text(), /Pairing code/);
+    assert.match(after.headers.get("set-cookie") ?? "", /Max-Age=0/);
+  });
+
+  test("ログイン済みなら新しいブラウザ用のコードを発行できる", async () => {
+    // PC を2台目・3台目と増やすときに、アプリを触らずに済む。
+    const env = await envWithDevice();
+    const first = cookieValue(await handle(postForm("/dashboard", `token=${TOKEN}`), env, now));
+
+    const res = await handle(
+      postForm("/dashboard", "newpair=1", { cookie: `sk_token=${first}` }),
+      env,
+      now
+    );
+    assert.equal(res.status, 200);
+    const body = await res.text();
+    const code = /class="code-value">([^<]+)</.exec(body)?.[1];
+    assert.ok(code, "発行したコードが画面に出ること");
+
+    // そのコードで2台目がログインできる
+    const second = await handle(postForm("/dashboard", `pair=${code}`), env, now);
+    assert.equal(second.status, 303);
+    assert.notEqual(cookieValue(second), first);
+  });
+
+  test("セッションの表示名は User-Agent から作る", async () => {
+    const env = await envWithDevice();
+    const res = await handle(
+      postForm("/dashboard", `token=${TOKEN}`, {
+        ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/121.0",
+      }),
+      env,
+      now
+    );
+    const session = cookieValue(res);
+
+    const page = await handle(get("/", `sk_token=${session}`), env, now);
+    assert.match(await page.text(), /Firefox on Windows/);
+  });
+
+  test("他ブラウザの表示名も一覧に出る", async () => {
+    const env = await envWithDevice();
+    const a = cookieValue(await handle(postForm("/dashboard", `token=${TOKEN}`), env, now));
+    await handle(
+      postForm("/dashboard", `token=${TOKEN}`, {
+        ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari/604.1",
+      }),
+      env,
+      now
+    );
+
+    const page = await handle(get("/", `sk_token=${a}`), env, now);
+    const body = await page.text();
+    assert.match(body, /Chrome on macOS/);
+    assert.match(body, /Safari on iOS/);
+    assert.match(body, /this browser/);
+  });
+
+  // ---- 旧 Cookie からの移行 ----
+
+  test("旧 Cookie（端末トークン）はセッションに昇格する", async () => {
+    // 移行措置。これをしないと、変更後に全ブラウザが突然ログアウトする。
+    const env = await envWithDevice();
+    const res = await handle(get("/", `sk_token=${TOKEN}`), env, now);
+
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /Today/);
+
+    const setCookie = res.headers.get("set-cookie") ?? "";
+    const session = cookieValue(res);
+    assert.ok(session.length > 0);
+    assert.notEqual(session, TOKEN);
+    // 昇格後はブラウザに端末トークンを残さない
+    assert.equal(setCookie.includes(TOKEN), false);
+  });
+
+  test("昇格したセッションも一覧に出て失効できる", async () => {
+    const env = await envWithDevice();
+    const promoted = cookieValue(await handle(get("/", `sk_token=${TOKEN}`), env, now));
+
+    const page = await handle(get("/", `sk_token=${promoted}`), env, now);
+    const body = await page.text();
+    assert.match(body, /Chrome on macOS/);
+
+    const id = /name="revoke" value="([^"]+)"/.exec(body)?.[1];
+    await handle(postForm("/dashboard", `revoke=${id}`, { cookie: `sk_token=${promoted}` }), env, now);
+
+    assert.match(await (await handle(get("/", `sk_token=${promoted}`), env, now)).text(), /Pairing code/);
+  });
+
+  test("ログアウトはセッションをサーバー側でも失効させる", async () => {
+    const env = await envWithDevice();
+    const res = await handle(postForm("/dashboard", `token=${TOKEN}`), env, now);
+    const session = cookieValue(res);
+
+    const out = await handle(
+      postForm("/dashboard", "logout=1", { cookie: `sk_token=${session}` }),
+      env,
+      now
+    );
+    assert.match(out.headers.get("set-cookie") ?? "", /Max-Age=0/);
+
+    const after = await handle(get("/", `sk_token=${session}`), env, now);
+    assert.match(await after.text(), /Pairing code/);
   });
 });
 

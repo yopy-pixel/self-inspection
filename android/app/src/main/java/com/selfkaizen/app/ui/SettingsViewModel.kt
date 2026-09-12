@@ -7,6 +7,7 @@ import com.selfkaizen.app.data.DatabaseProvider
 import com.selfkaizen.app.data.SettingsRepository
 import com.selfkaizen.app.rules.RuleSettings
 import com.selfkaizen.app.sync.ConnectionCheck
+import com.selfkaizen.app.sync.PairCodeResult
 import com.selfkaizen.app.sync.SyncClient
 import com.selfkaizen.app.sync.SyncScheduler
 import com.selfkaizen.app.sync.SyncSettings
@@ -31,6 +32,22 @@ sealed interface ConnectionTestState {
     data class Failed(val message: String) : ConnectionTestState
 }
 
+/**
+ * 発行済みのペアコード。
+ *
+ * **有効期限は「残り秒数」で持つ。** サーバーが返す絶対時刻を端末の時計と
+ * 比べると、時計がずれている端末で残り時間が破綻する（すぐ期限切れに見える、
+ * いつまでも切れない）。受け取った瞬間からの経過だけを数えればずれない。
+ */
+data class PairCode(
+    val code: String,
+    val ttlMillis: Long,
+    val receivedAt: Long
+) {
+    /** いま表示すべき残り時間（ミリ秒）。 */
+    fun remainingMillis(now: Long): Long = ttlMillis - (now - receivedAt)
+}
+
 /** 設定画面の状態。 */
 data class SettingsUiState(
     val loading: Boolean = true,
@@ -47,7 +64,11 @@ data class SettingsUiState(
     val connection: ConnectionTestState = ConnectionTestState.Idle,
     val lastSyncAt: Long? = null,
     val savedAt: Long? = null,
-    val error: String? = null
+    val error: String? = null,
+    /** 発行済みのペアコード（未発行なら null）。 */
+    val pairCode: PairCode? = null,
+    /** ペアコード発行の失敗理由。 */
+    val pairError: String? = null
 ) {
     val isConfigured: Boolean
         get() = syncEnabled && endpoint.isNotBlank() && deviceId.isNotBlank() && token.isNotBlank()
@@ -335,6 +356,60 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 }
             )
         }
+    }
+
+    // ---- ブラウザのペアリング ----
+
+    /**
+     * 新しいブラウザ用のペアコードを発行する。
+     *
+     * 端末トークンは**画面に出さない**。出すのは短命・単回使用のコードだけ。
+     * これで「PC を増やすたびに 64 文字を手入力する」必要が無くなる。
+     */
+    fun pairBrowser() {
+        val s = _state.value
+        if (!s.isConfigured) {
+            _state.value = s.copy(
+                pairCode = null,
+                pairError = "set the endpoint, device id and token first"
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            val settings = SyncSettings(
+                enabled = true,
+                endpoint = s.endpoint,
+                deviceId = s.deviceId,
+                token = s.token
+            )
+            val receivedAt = System.currentTimeMillis()
+            val result = withContext(Dispatchers.IO) { SyncClient().pairBrowser(settings) }
+
+            _state.value = when (result) {
+                is PairCodeResult.Ok -> _state.value.copy(
+                    pairCode = PairCode(
+                        code = result.code,
+                        ttlMillis = result.expiresInSeconds * 1000L,
+                        receivedAt = receivedAt
+                    ),
+                    pairError = null
+                )
+                is PairCodeResult.Unauthorized -> _state.value.copy(
+                    pairCode = null,
+                    pairError = "token rejected (${result.status})"
+                )
+                is PairCodeResult.Failed -> _state.value.copy(
+                    pairCode = null,
+                    pairError = result.message
+                )
+            }
+        }
+    }
+
+    /** 発行済みのコードを消す（表示を閉じる）。 */
+    fun clearPairCode() {
+        _state.value = _state.value.copy(pairCode = null, pairError = null)
     }
 
     companion object {

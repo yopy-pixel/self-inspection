@@ -15,15 +15,37 @@ import {
   renderLogin,
   tokenFromCookie,
 } from "./dashboard.ts";
+import {
+  SESSION_REFRESH_AFTER_MS,
+  authenticateSession,
+  createSession,
+  listSessions,
+  mintPairCode,
+  normalizePairCode,
+  pruneSessions,
+  redeemPairCode,
+  revokeSession,
+  sessionLabelFromUA,
+  touchSession,
+} from "./session.ts";
 
 /**
  * Cloudflare Worker のエントリポイント。
  *
  * ルーティング:
  *   GET  /healthz              … 死活確認（認証不要）
+ *   GET  /                     … 集計画面（ブラウザセッション）
+ *   POST /dashboard            … ログイン・失効・ペアコード発行
+ *   GET  /day                  … 日別の内訳（ブラウザセッション）
  *   POST /api/v1/devices       … 端末登録（管理者トークンが必要）
+ *   POST /api/v1/pair          … ペアコード発行（端末トークン or セッション）
  *   POST /api/v1/ingest        … 取り込み（端末トークン）
  *   GET  /api/v1/summary       … 集計（端末トークン）
+ *   GET  /api/v1/day           … 日別の内訳（端末トークン）
+ *
+ * 認証は2種類ある。**混ぜない。**
+ *  - 端末トークン … 端末（アプリ）が同期に使う。Cookie には入れない。
+ *  - セッション   … ブラウザごとに1つ。1台ずつ失効できる。
  *
  * 設計方針:
  *  - 取り込みは**冪等**。同じ batchId の再送は二重計上しない。
@@ -82,11 +104,16 @@ export async function handle(
     }
     // 日別の内訳。メイン画面の日付をタップすると開く。
     if (request.method === "GET" && path === "/day") {
-      return await handleDayPage(request, env, url);
+      return await handleDayPage(request, env, url, now);
     }
 
     if (request.method === "POST" && path === "/api/v1/devices") {
       return await handleRegisterDevice(request, env, now);
+    }
+
+    // ペアコードの発行。**認証済みの主体だけ**が発行できる。
+    if (request.method === "POST" && path === "/api/v1/pair") {
+      return await handlePair(request, env, now);
     }
 
     if (request.method === "POST" && path === "/api/v1/ingest") {
@@ -118,47 +145,187 @@ export async function handle(
  * 集計画面。
  *
  * **トークンは Cookie から取る。** URL に置くとログに残るため。
- * Cookie が無ければトークン入力画面を返す。
+ * Cookie が無ければログイン画面を返す。
  */
 async function handleDashboard(request: Request, env: AppEnv, now: number): Promise<Response> {
-  const cookie = tokenFromCookie(request.headers.get("Cookie"));
-  if (!cookie) return html(renderLogin());
-
-  const device = await authenticate(env.DB, cookie);
-  if (!device) {
-    // 失効したトークン。Cookie を消して入力し直してもらう。
-    return html(renderLogin("Token rejected"), { headers: { "Set-Cookie": clearCookie() } });
-  }
+  const auth = await resolveBrowserAuth(request, env, now);
+  if (!auth) return rejectBrowser(request, "Session expired");
 
   // `now` を受け取るのは、実時刻に依存させないため（テストの決定性）。
   const today = new Date(now).toISOString().slice(0, 10);
   const from = new Date(now - 6 * 86_400_000).toISOString().slice(0, 10);
-  const summary = await querySummary(env.DB, from, today);
 
-  return html(renderDashboard(summary, today));
+  return html(
+    renderDashboard(await querySummary(env.DB, from, today), today, {
+      sessions: await listSessions(env.DB, now),
+      currentSessionId: auth.sessionId,
+    }),
+    auth.setCookie ? { headers: { "Set-Cookie": auth.setCookie } } : {}
+  );
 }
 
-/** トークン入力の受け取り。 */async function handleDashboardAuth(
+/** ブラウザの認証結果。 */
+interface BrowserAuth {
+  sessionId: string;
+  /**
+   * Cookie を差し替える必要があるときだけ入る。
+   *  - 旧 Cookie（端末トークン）からの昇格
+   *  - セッションの延長
+   */
+  setCookie?: string;
+}
+
+/**
+ * ブラウザの Cookie を解決する。
+ *
+ * 1. セッショントークンとして照合する（通常）。
+ * 2. 一致しなければ**端末トークンとして照合し、セッションに昇格させる**。
+ *    これは Cookie に端末トークンを入れていた旧実装からの移行措置で、
+ *    利用者を突然ログアウトさせないためにある。
+ *    （昇格後はブラウザに端末トークンは残らない。）
+ */
+async function resolveBrowserAuth(
+  request: Request,
+  env: AppEnv,
+  now: number
+): Promise<BrowserAuth | null> {
+  const cookie = tokenFromCookie(request.headers.get("Cookie"));
+  if (!cookie) return null;
+
+  const session = await authenticateSession(env.DB, cookie, now);
+  if (session) {
+    // 延長は1日1回まで（毎リクエスト書くと D1 の書き込みが無駄に増える）。
+    const stale = now - (session.last_seen_at ?? 0) > SESSION_REFRESH_AFTER_MS;
+    if (stale) await touchSession(env.DB, session.id, now);
+    return { sessionId: session.id, setCookie: stale ? buildCookie(cookie) : undefined };
+  }
+
+  const device = await authenticate(env.DB, cookie);
+  if (!device) return null;
+
+  const promoted = await createSession(
+    env.DB,
+    {
+      label: sessionLabelFromUA(request.headers.get("User-Agent")),
+      origin: "legacy",
+      deviceId: device.id,
+    },
+    now
+  );
+  return { sessionId: promoted.id, setCookie: buildCookie(promoted.token) };
+}
+
+/**
+ * 認証できないブラウザへの応答。
+ *
+ * Cookie を持っている（＝期限切れ・失効済み）なら消してログイン画面に戻す。
+ * 持っていないなら、ただの初回アクセスなので何も消さない。
+ */
+function rejectBrowser(request: Request, message: string): Response {
+  const had = tokenFromCookie(request.headers.get("Cookie")) !== null;
+  return html(renderLogin(had ? message : undefined), {
+    headers: had ? { "Set-Cookie": clearCookie() } : {},
+  });
+}
+
+/**
+ * ログインとログイン後の操作（すべて POST）。
+ *
+ *  - `pair=<code>`  … ペアコードを引き換えてセッションを作る
+ *  - `token=<t>`    … 端末トークンでセッションを作る（初回・予備）
+ *  - `newpair=1`    … 新しいブラウザ用のコードを発行して画面に出す
+ *  - `revoke=<id>`  … 指定セッションを失効させる
+ *  - `logout=1`     … 自分のセッションを失効させて Cookie を消す
+ */
+async function handleDashboardAuth(
   request: Request,
   env: AppEnv,
   now: number
 ): Promise<Response> {
   const form = new URLSearchParams(await request.text());
+  const auth = await resolveBrowserAuth(request, env, now);
+  const label = sessionLabelFromUA(request.headers.get("User-Agent"));
 
+  // ---- ログアウト（自分のセッションを失効させる） ----
   if (form.get("logout") === "1") {
+    if (auth) await revokeSession(env.DB, auth.sessionId, now);
     return redirect("/", { "Set-Cookie": clearCookie() });
   }
 
-  const token = form.get("token")?.trim() ?? "";
-  if (!token) return html(renderLogin("Token is required"), { status: 400 });
-
-  const device = await authenticate(env.DB, token);
-  if (!device) {
-    // **存在するかどうかを区別しない**（総当たりの手がかりを与えない）。
-    return html(renderLogin("Token rejected"), { status: 401 });
+  // ---- 他のセッションの失効 ----
+  const revokeId = form.get("revoke");
+  if (revokeId) {
+    if (!auth) return rejectBrowser(request, "Session expired");
+    await revokeSession(env.DB, revokeId, now);
+    // 自分自身を消した場合はログイン画面へ戻す。
+    if (revokeId === auth.sessionId) {
+      return redirect("/", { "Set-Cookie": clearCookie() });
+    }
+    return redirect("/");
   }
 
-  return redirect("/", { "Set-Cookie": buildCookie(token) });
+  // ---- 未ログイン: コードかトークンでセッションを作る ----
+  if (!auth) {
+    const code = form.get("pair") ?? "";
+    const token = form.get("token")?.trim() ?? "";
+
+    if (normalizePairCode(code).length > 0) {
+      const redeemed = await redeemPairCode(env.DB, code, now);
+      if (!redeemed.ok) {
+        // **理由を区別しない**（総当たりの手がかりを与えない）。
+        return html(renderLogin("Code rejected"), { status: 401 });
+      }
+      const created = await createSession(
+        env.DB,
+        {
+          label,
+          origin: "pair",
+          deviceId: redeemed.deviceId,
+          originSessionId: redeemed.sessionId,
+        },
+        now
+      );
+      return redirect("/", { "Set-Cookie": buildCookie(created.token) });
+    }
+
+    if (!token) {
+      return html(renderLogin("Enter a pairing code or a device token"), { status: 400 });
+    }
+
+    const device = await authenticate(env.DB, token);
+    if (!device) {
+      return html(renderLogin("Token rejected"), { status: 401 });
+    }
+    const created = await createSession(
+      env.DB,
+      { label, origin: "token", deviceId: device.id },
+      now
+    );
+    return redirect("/", { "Set-Cookie": buildCookie(created.token) });
+  }
+
+  // ---- ログイン済み: 新しいブラウザ用のコードを発行 ----
+  if (form.get("newpair") === "1") {
+    await pruneSessions(env.DB, now);
+    const { code, expiresAt } = await mintPairCode(
+      env.DB,
+      { sessionId: auth.sessionId },
+      now
+    );
+
+    const today = new Date(now).toISOString().slice(0, 10);
+    const from = new Date(now - 6 * 86_400_000).toISOString().slice(0, 10);
+    return html(
+      renderDashboard(await querySummary(env.DB, from, today), today, {
+        sessions: await listSessions(env.DB, now),
+        currentSessionId: auth.sessionId,
+        pairCode: { code, expiresAt },
+      }),
+      auth.setCookie ? { headers: { "Set-Cookie": auth.setCookie } } : {}
+    );
+  }
+
+  return redirect("/");
 }
 
 /**
@@ -167,21 +334,23 @@ async function handleDashboard(request: Request, env: AppEnv, now: number): Prom
  * メイン画面の日付をタップして開く。
  * **認証はメイン画面と同じ**（Cookie）。
  */
-async function handleDayPage(request: Request, env: AppEnv, url: URL): Promise<Response> {
-  const cookie = tokenFromCookie(request.headers.get("Cookie"));
-  if (!cookie) return html(renderLogin());
-
-  const device = await authenticate(env.DB, cookie);
-  if (!device) {
-    return html(renderLogin("Token rejected"), { headers: { "Set-Cookie": clearCookie() } });
-  }
+async function handleDayPage(
+  request: Request,
+  env: AppEnv,
+  url: URL,
+  now: number
+): Promise<Response> {
+  const auth = await resolveBrowserAuth(request, env, now);
+  if (!auth) return rejectBrowser(request, "Session expired");
 
   const date = url.searchParams.get("date") ?? "";
   if (!isValidDateString(date)) {
     return html(renderLogin("Invalid date"), { status: 400 });
   }
 
-  return html(renderDay(await queryDay(env.DB, date)));
+  return html(renderDay(await queryDay(env.DB, date)), {
+    headers: auth.setCookie ? { "Set-Cookie": auth.setCookie } : {},
+  });
 }
 
 /**
@@ -266,6 +435,43 @@ async function handleRegisterDevice(
   const { deviceId, token } = await registerDevice(env.DB, label, now);
   // トークンはここでしか返さない（保存はハッシュのみ）。
   return json({ deviceId, token, label }, 201);
+}
+
+// ---------------------------------------------------------------------------
+// ペアコードの発行
+// ---------------------------------------------------------------------------
+
+/**
+ * 新しいブラウザ用のペアコードを発行する。
+ *
+ * **認証済みの主体だけ**が発行できる:
+ *  - 端末トークン（アプリ）… `Authorization: Bearer <token>`
+ *  - 既存のブラウザセッション … Cookie
+ *
+ * 未認証で発行できると、ログイン画面を開いた誰もがログインできてしまい、
+ * 認証が丸ごと無意味になる。
+ */
+async function handlePair(request: Request, env: AppEnv, now: number): Promise<Response> {
+  let deviceId: string | null = null;
+  let sessionId: string | null = null;
+
+  const bearer = parseBearer(request.headers.get("Authorization"));
+  if (bearer) {
+    const device = await authenticate(env.DB, bearer);
+    if (!device) return json({ error: "unauthorized" } satisfies ErrorResponse, 401);
+    deviceId = device.id;
+  } else {
+    const auth = await resolveBrowserAuth(request, env, now);
+    if (!auth) return json({ error: "unauthorized" } satisfies ErrorResponse, 401);
+    sessionId = auth.sessionId;
+  }
+
+  const { code, expiresAt } = await mintPairCode(env.DB, { deviceId, sessionId }, now);
+  return json({
+    code,
+    expiresAt,
+    expiresInSeconds: Math.max(0, Math.floor((expiresAt - now) / 1000)),
+  });
 }
 
 // ---------------------------------------------------------------------------

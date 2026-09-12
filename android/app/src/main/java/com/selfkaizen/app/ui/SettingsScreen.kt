@@ -22,7 +22,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,6 +41,7 @@ import com.selfkaizen.app.R
 import com.selfkaizen.app.ui.theme.LocalKaizenColors
 import com.selfkaizen.app.ui.theme.SectionLabelStyle
 import java.time.ZoneId
+import kotlinx.coroutines.delay
 
 /**
  * 設定画面。
@@ -63,6 +66,8 @@ fun SettingsScreen(
     onPasteCredentials: (String) -> Unit,
     onTestConnection: () -> Unit,
     onSyncNow: () -> Unit,
+    onPairBrowser: () -> Unit,
+    onClearPairCode: () -> Unit,
     onSave: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -220,6 +225,33 @@ fun SettingsScreen(
 
                 ConnectionStatus(state)
                 LastSyncLine(state)
+
+                // ---- ブラウザのペアリング ----
+                //
+                // 端末トークンを手入力させないための導線。複数の PC・スマホを
+                // 前提にしているので、**何台でも**ここから追加できる。
+                Text(
+                    text = stringResource(R.string.settings_pair_hint),
+                    color = c.ink3,
+                    fontSize = 11.sp
+                )
+                if (state.pairCode == null) {
+                    Button(
+                        onClick = onPairBrowser,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = c.surface,
+                            contentColor = c.ink
+                        ),
+                        modifier = Modifier.border(1.dp, c.line, RoundedCornerShape(4.dp))
+                    ) {
+                        Text(stringResource(R.string.settings_pair), fontSize = 12.sp)
+                    }
+                } else {
+                    PairCodeBlock(pair = state.pairCode, onDismiss = onClearPairCode)
+                }
+                state.pairError?.let {
+                    Text(text = it, color = c.danger, fontSize = 11.sp)
+                }
             }
         }
 
@@ -397,6 +429,49 @@ private fun LastSyncLine(state: SettingsUiState) {
     } ?: stringResource(R.string.settings_never_synced)
 
     Text(text = text, color = c.ink2, fontSize = 11.sp)
+}
+
+/**
+ * 発行したペアコード。
+ *
+ * **残り時間を秒で数える。** 期限が切れたら自動的に表示を終える
+ * （通らないコードを出しっぱなしにすると、打った側が混乱する）。
+ */
+@Composable
+private fun PairCodeBlock(pair: PairCode, onDismiss: () -> Unit) {
+    val c = LocalKaizenColors.current
+    var now by remember(pair.code) { mutableLongStateOf(System.currentTimeMillis()) }
+    val remaining = pair.remainingMillis(now)
+
+    LaunchedEffect(pair.code) {
+        while (true) {
+            now = System.currentTimeMillis()
+            if (pair.remainingMillis(now) <= 0) break
+            delay(1_000)
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = pair.code,
+            color = if (remaining > 0) c.ink else c.ink3,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 4.sp
+        )
+        Text(
+            text = if (remaining > 0) {
+                stringResource(R.string.settings_pair_expires, DurationFormat.countdown(remaining))
+            } else {
+                stringResource(R.string.settings_pair_expired)
+            },
+            color = c.ink3,
+            fontSize = 11.sp
+        )
+        TextButton(onClick = onDismiss) {
+            Text(stringResource(R.string.settings_pair_dismiss), color = c.ink2, fontSize = 11.sp)
+        }
+    }
 }
 
 // ---- 入力変換 ----

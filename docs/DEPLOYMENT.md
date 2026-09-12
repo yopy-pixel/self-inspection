@@ -8,7 +8,7 @@
 | URL | `https://self-kaizen.yoshitashou.workers.dev` |
 | Worker 名 | `self-kaizen` |
 | D1 | `self-kaizen`（`e5cc48b5-cf15-4a5e-b9ef-3d17587e1b74`、APAC） |
-| Version ID | `4d2db5df-e7e4-4961-b4ce-adef7ecc9f0d` |
+| Version ID | `6abeec2b-d15e-4c52-ae8a-890a2c5066fd`（ペアコード／ブラウザセッション対応） |
 
 **接続情報（Android アプリに入力する値）** は `server/.env.local` に保存されている
 （`.gitignore` の `server/.env.*` で除外済み）。
@@ -25,7 +25,7 @@
 | サーバー実装 | **完了** |
 | 依存関係の脆弱性 | **0件**（wrangler 4 / workers-types 5 に更新済み） |
 | 型検査 `npm run typecheck` | **0エラー** |
-| サーバーテスト `npm test` | **42件パス** |
+| サーバーテスト `npm test` | **85件パス** |
 | デプロイのドライラン | **成功**（14.03 KiB / gzip 4.20 KiB） |
 | D1 マイグレーション（ローカル） | **成功**（9コマンド） |
 | Android ↔ サーバー契約テスト | **実通信で成功** |
@@ -33,7 +33,7 @@
 | **Cloudflare アカウント** | ✅ 取得済み（`Yoshitashou@gmail.com`） |
 | **D1 の `database_id`** | ✅ 設定済み（`wrangler.toml` に反映） |
 | **本番シークレット** | ✅ 設定済み（`ADMIN_TOKEN`） |
-| **本番マイグレーション** | ✅ 適用済み（9コマンド） |
+| **本番マイグレーション** | ✅ 適用済み（`0001` `0002_browser_session`） |
 
 > **AI が代行できたのは、あなたが `wrangler login` で OAuth を通した後のみ。**
 > 認証だけはアカウントに紐づくため代行できない。
@@ -327,6 +327,31 @@ curl -s "https://self-kaizen.<サブドメイン>.workers.dev/api/v1/summary" \
 > **画面から入力できない端末（Xiaomi など）**では、`adb shell input` が
 > `INJECT_EVENTS` で拒否されます。`DEVICE-SETUP.md` §7
 > 「画面を触らずに設定を入れる（`adb` 注入・debug 限定）」を使ってください。
+
+### ブラウザ（PC・スマホ）からのログイン
+
+**端末トークンは手入力しない。** アプリが短命のペアコードを発行し、
+ブラウザはそれを引き換える（`server/README.md` §1.6）。
+
+1. アプリの設定 → **Pair a browser** → 8文字のコードが出る（**3分・1回限り**）
+2. PC で `https://self-kaizen.<サブドメイン>.workers.dev/` を開く
+3. **Pairing code** に打ち込んで `Open`
+
+ログイン後、ダッシュボードの **Browsers** に今ログインしている端末が一覧される。
+
+| 操作 | 結果 |
+|---|---|
+| `Pair a browser`（アプリ or ダッシュボード） | 新しいブラウザ用のコードを発行 |
+| `Revoke`（他ブラウザの行） | **そのブラウザだけ**失効。他は生きたまま |
+| `Sign out`（自分の行） | 自分のセッションをサーバー側で失効させて Cookie を消す |
+
+- **Cookie に入るのはセッションだけ**で、端末トークンはブラウザに残りません
+- 端末トークンでログインした場合も、セッションが作られて Cookie には入りません
+- 旧実装の Cookie（端末トークン）は**セッションに自動昇格**します
+
+> コードは短命・単回使用です。**発行できるのは認証済みの主体だけ**で、
+> ログイン画面からは発行できません（できてしまうと、その画面を開いた誰もが
+> ログインできてしまい、認証が無意味になります）。
 
 ---
 

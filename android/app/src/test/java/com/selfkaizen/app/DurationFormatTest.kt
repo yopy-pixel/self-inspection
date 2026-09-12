@@ -119,6 +119,15 @@ class DurationFormatTest {
     }
 
     @Test
+    fun `ペアコードの残り時間は分秒で出す`() {
+        assertThat(DurationFormat.countdown(180_000L)).isEqualTo("3:00")
+        assertThat(DurationFormat.countdown(165_000L)).isEqualTo("2:45")
+        assertThat(DurationFormat.countdown(9_000L)).isEqualTo("0:09")
+        // 過ぎていたら 0:00（負の数にしない）
+        assertThat(DurationFormat.countdown(-5_000L)).isEqualTo("0:00")
+    }
+
+    @Test
     fun `未来の時刻はjust nowになる`() {
         val now = at("2026-09-14", 12, 0)
         assertThat(DurationFormat.ago(now + 60_000L, now)).isEqualTo("just now")

@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import com.selfkaizen.app.sync.ConnectionCheck
 import com.selfkaizen.app.sync.HttpResult
 import com.selfkaizen.app.sync.HttpTransport
+import com.selfkaizen.app.sync.PairCodeResult
 import com.selfkaizen.app.sync.SyncBatch
 import com.selfkaizen.app.sync.SyncClient
 import com.selfkaizen.app.sync.SyncEvent
@@ -272,6 +273,44 @@ class SyncClientTest {
 
         assertThat(r).isInstanceOf(SyncResult.Accepted::class.java)
         assertThat((r as SyncResult.Accepted).inserted).isEqualTo(0)
+    }
+
+    // ---------------- ブラウザのペアリング ----------------
+
+    @Test
+    fun `ペアコードを発行できる`() {
+        val t = RecordingTransport(
+            response = HttpResult(200, """{"code":"ABC12345","expiresAt":1,"expiresInSeconds":180}""")
+        )
+        val r = SyncClient(t).pairBrowser(settings())
+
+        assertThat(r).isEqualTo(PairCodeResult.Ok("ABC12345", 180L))
+        assertThat(t.lastUrl).endsWith("/api/v1/pair")
+        // 発行できるのは端末だけなので、端末トークンで認証する
+        assertThat(t.lastToken).isEqualTo(token)
+    }
+
+    @Test
+    fun `ペアコード発行で 401 は Unauthorized になる`() {
+        val t = RecordingTransport(response = HttpResult(401, """{"error":"unauthorized"}"""))
+        assertThat(SyncClient(t).pairBrowser(settings()))
+            .isEqualTo(PairCodeResult.Unauthorized(401))
+    }
+
+    @Test
+    fun `ペアコードの応答が壊れていたら失敗にする`() {
+        val t = RecordingTransport(response = HttpResult(200, """{"nope":true}"""))
+        assertThat(SyncClient(t).pairBrowser(settings()))
+            .isInstanceOf(PairCodeResult.Failed::class.java)
+    }
+
+    @Test
+    fun `平文HTTPへはペアコードを要求しない`() {
+        val t = RecordingTransport()
+        val r = SyncClient(t).pairBrowser(settings(endpoint = "http://example.com"))
+
+        assertThat(r).isInstanceOf(PairCodeResult.Failed::class.java)
+        assertThat(t.callCount).isEqualTo(0)
     }
 
     // ---------------- トークンの漏洩防止 ----------------

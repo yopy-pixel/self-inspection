@@ -140,9 +140,54 @@ class SyncClient(
         }
     }
 
+    /**
+     * ペアコードを発行する。
+     *
+     * 新しいブラウザ（PC・別のスマホ）をログインさせるための短命・単回使用の
+     * コード。**端末トークンを手入力させない**ための仕組みで、トークンそのものは
+     * 画面にも URL にも出さない。
+     *
+     * 発行できるのは認証済みの端末だけ（サーバー側で端末トークンを検証する）。
+     */
+    fun pairBrowser(settings: SyncSettings): PairCodeResult {
+        if (!isAllowedEndpoint(settings.endpoint)) {
+            return PairCodeResult.Failed("endpoint must be https://")
+        }
+        if (settings.token.isBlank()) {
+            return PairCodeResult.Failed("token is empty")
+        }
+
+        val response = try {
+            transport.postJson(
+                url = settings.endpoint.trimEnd('/') + PAIR_PATH,
+                bearerToken = settings.token,
+                jsonBody = "{}"
+            )
+        } catch (e: IOException) {
+            return PairCodeResult.Failed(e.message ?: "network error")
+        }
+
+        return when (response.status) {
+            200 -> {
+                val json = runCatching { JSONObject(response.body) }.getOrNull()
+                val code = json?.optString("code").orEmpty()
+                // 残り秒数を使う（絶対時刻だと端末の時計のずれに弱い）。
+                val expiresInSeconds = json?.optLong("expiresInSeconds", 0L) ?: 0L
+                if (code.isBlank() || expiresInSeconds <= 0L) {
+                    PairCodeResult.Failed("unexpected response")
+                } else {
+                    PairCodeResult.Ok(code, expiresInSeconds)
+                }
+            }
+            401, 403 -> PairCodeResult.Unauthorized(response.status)
+            else -> PairCodeResult.Failed("HTTP ${response.status}")
+        }
+    }
+
     companion object {
         const val INGEST_PATH = "/api/v1/ingest"
         const val SUMMARY_PATH = "/api/v1/summary"
+        const val PAIR_PATH = "/api/v1/pair"
 
         /** サーバー側の `SCHEMA_VERSION` と一致させること。 */
         const val SCHEMA_VERSION = 1
@@ -159,6 +204,16 @@ sealed interface ConnectionCheck {
 
     /** 到達できなかった、または想定外の応答。 */
     data class Failed(val message: String) : ConnectionCheck
+}
+
+/** ペアコード発行の結果。 */
+sealed interface PairCodeResult {
+    /** 発行できた。[expiresInSeconds] はサーバーが計算した残り時間。 */
+    data class Ok(val code: String, val expiresInSeconds: Long) : PairCodeResult
+
+    data class Unauthorized(val status: Int) : PairCodeResult
+
+    data class Failed(val message: String) : PairCodeResult
 }
 
 /** HTTP 応答。 */

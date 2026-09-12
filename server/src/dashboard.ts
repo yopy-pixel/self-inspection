@@ -1,3 +1,4 @@
+import type { SessionRow } from "./session.ts";
 import type { DayResponse, SummaryResponse } from "./types.ts";
 
 /**
@@ -30,12 +31,16 @@ export function tokenFromCookie(header: string | null): string | null {
 /**
  * Cookie を組み立てる。
  *
+ * **中身はセッショントークン**（端末トークンではない）。ブラウザごとに独立して
+ * 発行され、個別に失効できる。端末トークンをブラウザに置かないのは、
+ * 1台のブラウザを止めるために端末すべてを止める羽目になるため。
+ *
  * **`HttpOnly` を付ける**（JavaScript から読めないようにする）。
  * `Secure` は HTTPS 必須。`SameSite=Strict` で CSRF を防ぐ。
  * トークンを URL に置かないのは、**URL はログに残る**ため。
  */
-export function buildCookie(token: string): string {
-  return `${COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`;
+export function buildCookie(sessionToken: string): string {
+  return `${COOKIE_NAME}=${encodeURIComponent(sessionToken)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000`;
 }
 
 /** ログアウト用（即時失効）。 */
@@ -49,21 +54,45 @@ export function renderLogin(error?: string): string {
     "SelfKaizen",
     `
     <h1>SelfKaizen</h1>
-    <p class="sub">Server aggregate</p>
+    <p class="sub">Sign in this browser</p>
     <form method="POST" action="/dashboard">
+      <label for="pair">Pairing code</label>
+      <input id="pair" name="pair" autocomplete="off" autocapitalize="characters"
+             spellcheck="false" placeholder="8 characters from the app">
+      <p class="hint">Settings → Pair a browser. Valid for 3 minutes, single use.</p>
+
       <label for="token">Device token</label>
       <input id="token" name="token" type="password" autocomplete="off"
-             placeholder="paste the token from device registration" required>
+             placeholder="paste the token from device registration">
+      <p class="hint">Only for the first browser, or if the app is unavailable.</p>
+
       <button type="submit">Open</button>
     </form>
     ${error ? `<p class="err">${esc(error)}</p>` : ""}
-    <p class="foot">The token is stored in an HttpOnly cookie on this browser only.</p>
+    <p class="foot">A session is created per browser. Each one can be revoked
+    separately, and the device token is never stored in the browser.</p>
     `
   );
 }
 
+/** 集計画面に渡す、ブラウザ側の状態。 */
+export interface DashboardView {
+  /** 有効なセッション（新しい順）。 */
+  sessions: SessionRow[];
+  /** いま見ているブラウザのセッション ID。 */
+  currentSessionId: string;
+  /** いま発行したペアコード（発行直後のみ）。 */
+  pairCode?: { code: string; expiresAt: number };
+  /** エラー表示（コードが無効だった等）。 */
+  error?: string;
+}
+
 /** 集計画面。 */
-export function renderDashboard(summary: SummaryResponse, today: string): string {
+export function renderDashboard(
+  summary: SummaryResponse,
+  today: string,
+  view: DashboardView
+): string {
   const todayTotal = summary.dailyTotals.find((d) => d.localDate === today)?.totalMillis ?? 0;
   const maxDay = Math.max(1, ...summary.dailyTotals.map((d) => d.totalMillis));
   const maxApp = Math.max(1, ...summary.appTotals.map((a) => a.totalMillis));
@@ -121,13 +150,73 @@ export function renderDashboard(summary: SummaryResponse, today: string): string
       <ul class="plain">${devices || "<li>none</li>"}</ul>
     </section>
 
-    <form method="POST" action="/dashboard" class="logout">
-      <input type="hidden" name="logout" value="1">
-      <button type="submit">Sign out</button>
-    </form>
+    <section>
+      <h2>Browsers</h2>
+      ${sessionList(view)}
+
+      <form method="POST" action="/dashboard" class="inline-form">
+        <input type="hidden" name="newpair" value="1">
+        <button type="submit">Pair a browser</button>
+      </form>
+      ${view.pairCode ? pairCodeBlock(view.pairCode) : ""}
+      ${view.error ? `<p class="err">${esc(view.error)}</p>` : ""}
+    </section>
+
     <p class="foot">Read-only. The limit lives on the phone, not here.</p>
     `
   );
+}
+
+/**
+ * セッション一覧。
+ *
+ * **ブラウザごとに1行。** 複数の PC・スマホを区別して、1台ずつ止められる。
+ * 「Sign out」は自分の行では Cookie も消す（ログイン画面に戻る）。
+ */
+function sessionList(view: DashboardView): string {
+  if (view.sessions.length === 0) return `<p class="empty">no sessions</p>`;
+
+  return `<ul class="sessions">${view.sessions
+    .map((s) => {
+      const current = s.id === view.currentSessionId;
+      const last = s.last_seen_at ? fmtDateTime(s.last_seen_at) : "never used";
+      return `
+      <li>
+        <span class="s-label">${esc(s.label)}${current ? ` <b>· this browser</b>` : ""}</span>
+        <span class="s-meta">added ${fmtDateTime(s.created_at)} · last used ${last}</span>
+        <form method="POST" action="/dashboard" class="inline-form">
+          <input type="hidden" name="revoke" value="${esc(s.id)}">
+          <button type="submit" class="link-btn">${current ? "Sign out" : "Revoke"}</button>
+        </form>
+      </li>`;
+    })
+    .join("")}</ul>`;
+}
+
+/** 発行直後のペアコード。**この画面を見られたら終わりなので短命。** */
+function pairCodeBlock(pair: { code: string; expiresAt: number }): string {
+  return `
+  <div class="code">
+    <div class="code-value">${esc(pair.code)}</div>
+    <p class="hint">Enter it on the other browser. Single use, expires
+    ${esc(fmtClock(pair.expiresAt))}.</p>
+  </div>`;
+}
+
+/** `2026-09-13 01:05`。UTC で出す（ブラウザの地域差で誤解させないため）。 */
+export function fmtDateTime(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(
+    d.getUTCHours()
+  )}:${p(d.getUTCMinutes())}`;
+}
+
+/** `01:05:42`（UTC）。 */
+export function fmtClock(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
 
 /**
@@ -256,9 +345,24 @@ function page(title: string, body: string): string {
           background:var(--surface); color:var(--ink); font-size:13px; }
   button { padding:10px 14px; border:0; border-radius:6px; background:var(--ink);
            color:var(--bg); font-size:13px; font-weight:600; cursor:pointer; }
-  .logout { margin-top:8px; }
   .err { color:#C62828; font-size:12px; }
   .foot { color:var(--ink3); font-size:11px; margin-top:20px; }
+  .hint { color:var(--ink3); font-size:11px; margin:-4px 0 4px; }
+  ul.sessions { list-style:none; padding:0; margin:0 0 12px; }
+  ul.sessions li { display:flex; flex-wrap:wrap; align-items:baseline; gap:8px;
+                   padding:7px 0; border-top:1px solid var(--line); font-size:12px; }
+  ul.sessions li:first-child { border-top:0; }
+  .s-label { color:var(--ink); flex:1 1 auto; }
+  .s-meta { color:var(--ink3); font-size:11px;
+            font-variant-numeric:tabular-nums; }
+  form.inline-form { display:inline; max-width:none; }
+  button.link-btn { background:none; color:var(--ink2); font-weight:500;
+                    padding:2px 6px; font-size:11px; text-decoration:underline; }
+  button.link-btn:hover { color:var(--ink); }
+  .code { border:1px dashed var(--line); border-radius:8px; padding:12px;
+          margin-top:10px; }
+  .code-value { font-size:26px; font-weight:700; letter-spacing:4px;
+                font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>${body}</body>

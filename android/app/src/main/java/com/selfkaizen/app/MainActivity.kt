@@ -148,6 +148,8 @@ class MainActivity : ComponentActivity() {
                         onPasteCredentials = settingsVm::applyPastedCredentials,
                         onTestConnection = settingsVm::testConnection,
                         onSyncNow = settingsVm::syncNow,
+                        onPairBrowser = settingsVm::pairBrowser,
+                        onClearPairCode = settingsVm::clearPairCode,
                         onSave = {
                             settingsVm.save()
                             // 上限を変えたらダッシュボードの判定も変わるため読み直す

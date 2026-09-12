@@ -84,6 +84,12 @@
     <string name="settings_sync_now">Sync now</string>
     <string name="settings_last_sync">last sync %1$s</string>
     <string name="settings_never_synced">never synced</string>
+    <!-- ブラウザのペアリング（複数のPC・スマホを想定） -->
+    <string name="settings_pair">Pair a browser</string>
+    <string name="settings_pair_hint">Sign in on another browser without typing the token. Each browser is listed on the server and can be revoked on its own.</string>
+    <string name="settings_pair_expires">expires in %1$s</string>
+    <string name="settings_pair_expired">expired — pair again</string>
+    <string name="settings_pair_dismiss">Hide</string>
     <string name="settings_saved">Saved</string>
     <string name="settings_https_required">Endpoint must start with https://</string>
 

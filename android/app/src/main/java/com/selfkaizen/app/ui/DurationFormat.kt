@@ -125,6 +125,16 @@ object DurationFormat {
     }
 
     /**
+     * 残り時間を `2:45` 形式にする（ペアコードの失効まで）。
+     *
+     * **時間は出さない。** 最長でも数分なので、分と秒だけで足りる。
+     */
+    fun countdown(millis: Long): String {
+        val total = (millis.coerceAtLeast(0L)) / 1000
+        return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
+    }
+
+    /**
      * `9/10` 形式の短い日付。
      *
      * ランキング見出しに「いつの話か」を示すために使う。
