@@ -56,6 +56,12 @@ class UsageCollectorWorker(
             // 端末を余計に起こすことになる。
             com.selfkaizen.app.widget.WidgetUpdateWorker.enqueue(applicationContext)
 
+            // **収集の直後に上限超過を判定する。**
+            // 12時間ごとのまとめ通知とは別で、超過に気づくのが
+            // 最大12時間遅れるのを防ぐ。**必ず収集の後**に呼ぶ
+            // （先に呼ぶと古い合計で判定することになる）。
+            com.selfkaizen.app.notify.LimitAlertWorker.enqueue(applicationContext)
+
             Result.success()
         } catch (t: Throwable) {
             Log.e(TAG, "収集に失敗", t)

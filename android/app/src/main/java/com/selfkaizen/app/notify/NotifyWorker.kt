@@ -1,12 +1,10 @@
 package com.selfkaizen.app.notify
 
 import android.content.Context
-import android.os.Build
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.selfkaizen.app.collector.UsageAccess
@@ -109,23 +107,19 @@ class NotifyWorker(
          * メンテナンスウィンドウまで待たされ、**9:00 の通知が昼になる。**
          * せっかく Doze を抜けてアラームが鳴っても、そこで詰まっては意味が無い。
          *
-         * **API 30 以下では即時実行にしない。** 31 未満の即時実行は
-         * フォアグラウンドサービスで実装されるため、
-         * `getForegroundInfo` の実装が必須になる（未実装だと例外で落ちる）。
-         * 通知1件のために FGS を出す価値は無いので、そこでは通常実行のままにする。
+         * 判断の中身は [expediteIfSupported] に置いてある
+         * （通知が増えるたびに写すと、片方だけ直して API 31 未満で落ちる）。
          */
         fun enqueue(context: Context) {
-            val builder = OneTimeWorkRequestBuilder<NotifyWorker>()
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            }
+            val request = OneTimeWorkRequestBuilder<NotifyWorker>()
+                .expediteIfSupported()
+                .build()
 
             WorkManager.getInstance(context).enqueueUniqueWork(
                 WORK_NAME,
                 // 未実行のものが残っていれば置き換える（重複通知を防ぐ）。
                 ExistingWorkPolicy.REPLACE,
-                builder.build()
+                request
             )
         }
     }

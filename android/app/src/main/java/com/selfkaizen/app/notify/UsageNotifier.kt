@@ -39,11 +39,18 @@ class UsageNotifier(private val context: Context) {
         NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
     }
 
-    fun notify(content: NotifyContent) {
+    /**
+     * 通知を表示する。
+     *
+     * @return 実際に表示したか。**権限が無い場合は false。**
+     *   「出していないのに通知済みと記録する」事故を防ぐため、
+     *   呼び出し側が結果を見られるようにしている。
+     */
+    fun notify(content: NotifyContent): Boolean {
         if (!canPost()) {
             // API 33+ で未許可。通知は黙って捨てられるため、ログだけ残す。
             Log.i(TAG, "通知が許可されていないため表示しない: $content")
-            return
+            return false
         }
 
         ensureChannel()
@@ -65,6 +72,7 @@ class UsageNotifier(private val context: Context) {
             .build()
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        return true
     }
 
     // ------------------------------------------------------------------
