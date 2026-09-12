@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SelfKaizen — Monochrome Mockup</title>
+<style>
+  /* ============================================================
+     Monochrome design system — no hue anywhere.
+     Light = "Apple" (product precision, generous air)
+     Dark  = "Tesla" (near-black, thin lines, stark)
+     ============================================================ */
+  :root{ --r-card:14px; --track-h:9px; --hair:1px; }
+
+  /* ---------- LIGHT (Apple) ---------- */
+  body[data-theme="light"]{
+    --bg:#F5F5F5; --surface:#FFFFFF; --ink:#000000;
+    --ink-2:#6E6E6E; --ink-3:#A1A1A1;
+    --line:#E4E4E4; --track:#E9E9E9;
+    --danger:#C62828;   /* 超過時のみ。コントラスト 5.16 */
+  }
+  /* ---------- DARK (Tesla) ---------- */
+  body[data-theme="dark"]{
+    --bg:#0A0A0A; --surface:#151515; --ink:#FFFFFF;
+    --ink-2:#9A9A9A; --ink-3:#616161;
+    --line:#252525; --track:#242424;
+    --danger:#FF453A;   /* 超過時のみ。コントラスト 5.81 */
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",
+                "Hiragino Sans","Yu Gothic",sans-serif;
+    background:var(--bg);color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    padding:52px 28px 100px;line-height:1.7;
+    transition:background .25s,color .25s;
+  }
+  .wrap{max-width:1180px;margin:0 auto}
+
+  /* ---------- page chrome (annotation, not the app) ---------- */
+  h1{font-size:29px;font-weight:700;letter-spacing:-.025em;margin-bottom:8px}
+  .lede{color:var(--ink-2);font-size:14.5px;max-width:700px;margin-bottom:40px}
+  h2{font-size:11.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+     color:var(--ink-3);margin:60px 0 20px;padding-bottom:10px;
+     border-bottom:var(--hair) solid var(--line)}
+  .note{font-size:13.5px;color:var(--ink-2);max-width:700px;margin-top:16px}
+  .note strong{color:var(--ink);font-weight:600}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+       background:var(--track);padding:1px 6px;border-radius:4px}
+
+  .swatches{display:flex;border:var(--hair) solid var(--line);
+            border-radius:12px;overflow:hidden;max-width:700px}
+  .sw{flex:1;height:64px;display:flex;align-items:flex-end;justify-content:center;
+      padding-bottom:7px;font-size:9.5px}
+  .sw b{font-family:ui-monospace,Menlo,monospace;font-weight:500}
+
+  /* ---------- icon ---------- */
+  .icons{display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start}
+  .icon-item{width:206px}
+  .icon-badge{width:94px;height:94px;border-radius:22px;overflow:hidden;
+              box-shadow:0 6px 18px rgba(0,0,0,.18), 0 1px 3px rgba(0,0,0,.10)}
+  .icon-badge svg{display:block;width:100%;height:100%}
+  .icon-name{font-weight:650;font-size:14px;margin-top:13px}
+  .icon-desc{font-size:12.5px;color:var(--ink-2);margin-top:4px;line-height:1.6}
+  .badge-langfree{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.08em;
+    color:var(--ink-2);border:var(--hair) solid var(--line);
+    padding:1px 6px;border-radius:4px;margin-left:5px;vertical-align:1.5px}
+
+  .homescreen{border-radius:24px;padding:24px 20px;display:flex;gap:18px;
+    align-items:flex-start;border:var(--hair) solid var(--line);background:var(--surface)}
+  body[data-theme="dark"] .homescreen{background:linear-gradient(160deg,#1E1E1E,#0C0C0C)}
+  .hs-app{width:58px;text-align:center}
+  .hs-icon{width:58px;height:58px;border-radius:14px;overflow:hidden;
+           box-shadow:0 3px 9px rgba(0,0,0,.24)}
+  .hs-icon svg{display:block;width:100%;height:100%}
+  .hs-label{font-size:10px;color:var(--ink-2);margin-top:6px;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hs-icon.ph{background:var(--track);display:flex;align-items:center;
+    justify-content:center;color:var(--ink-3);font-size:20px}
+
+  /* ---------- phone ---------- */
+  .phones{display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start}
+  .phone{width:352px;background:#1A1A1A;border-radius:44px;padding:11px;
+         box-shadow:0 18px 48px rgba(0,0,0,.30)}
+  .screen{background:var(--bg);border-radius:34px;overflow:hidden;height:716px;
+          display:flex;flex-direction:column;transition:background .25s}
+  .status{display:flex;justify-content:space-between;align-items:center;
+          padding:12px 24px 4px;font-size:11.5px;font-weight:600;color:var(--ink-2)}
+  .scroll{flex:1;overflow:hidden;padding:4px 20px 16px}
+
+  /* hero */
+  .hero{display:flex;flex-direction:column;align-items:center;padding:2px 0 0}
+  .hero-label{font-size:10.5px;font-weight:700;letter-spacing:.2em;
+              text-transform:uppercase;color:var(--ink-3);margin-bottom:11px}
+  .ring-wrap{position:relative;width:196px;height:196px}
+  .ring-wrap svg{transform:rotate(-90deg)}
+  .ring-center{position:absolute;inset:0;display:flex;flex-direction:column;
+               align-items:center;justify-content:center;gap:3px}
+  .big{font-size:40px;font-weight:700;letter-spacing:-.045em;
+       font-variant-numeric:tabular-nums;line-height:1;white-space:nowrap}
+  .big .u{font-size:19px;font-weight:650;letter-spacing:-.01em}
+  .sub{font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;
+       white-space:nowrap;letter-spacing:.02em}
+  .state{margin-top:14px;font-size:14.5px;font-weight:650}
+  body[data-state="over"] .state{font-weight:750;color:var(--danger)}
+
+  /* monochrome ring: solid partial arc vs dotted full ring */
+  .ring-track{stroke:var(--track);transition:stroke .25s}
+  .ring-arc{stroke:var(--ink);transition:stroke .25s}
+  body[data-state="ok"]    .ring-arc{stroke-dasharray:289 264}
+  body[data-state="close"] .ring-arc{stroke-dasharray:509 44}
+  body[data-state="over"]  .ring-arc{stroke-dasharray:6 11;stroke-linecap:butt;stroke:var(--danger)}
+  body[data-state="over"]  .ring-track{stroke:var(--danger);opacity:.18}
+
+  .card{background:var(--surface);border:var(--hair) solid var(--line);
+        border-radius:var(--r-card);padding:13px 14px 11px;margin-top:12px;
+        transition:background .25s}
+  .card-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
+  .card-title{font-size:10.5px;font-weight:700;letter-spacing:.16em;
+              text-transform:uppercase;color:var(--ink-3)}
+  .card-hint{font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+
+  .row{display:grid;grid-template-columns:74px 1fr 46px;gap:10px;
+       align-items:center;margin-bottom:7px}
+  .row:last-child{margin-bottom:0}
+  .app{font-size:12.5px;font-weight:550;white-space:nowrap;overflow:hidden;
+       text-overflow:ellipsis;letter-spacing:-.005em}
+  .track{height:var(--track-h);background:var(--track);border-radius:5px;overflow:hidden}
+  .fill{height:100%;border-radius:5px;background:var(--ink-2)}
+  .fill.flag{background:var(--danger)}
+  .val{font-size:12px;text-align:right;color:var(--ink-2);
+       font-variant-numeric:tabular-nums}
+
+  .week{display:flex;align-items:flex-end;gap:8px;height:72px;padding-top:3px}
+  .day{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;
+       justify-content:flex-end}
+  .bar{width:100%;border-radius:4px 4px 2px 2px;background:var(--ink-3);opacity:.5}
+  .bar.today{background:var(--ink);opacity:1}
+  .bar.over{background:var(--danger);opacity:1}
+  body[data-state="over"] .bar.today{background:var(--danger)}
+  .day span{font-size:10px;color:var(--ink-3);font-weight:600}
+
+  .widgets{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .widget{width:330px;background:var(--surface);border-radius:22px;padding:17px 18px;
+    border:var(--hair) solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.10)}
+  .w-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+  .w-label{font-size:10.5px;font-weight:700;letter-spacing:.18em;
+           text-transform:uppercase;color:var(--ink-3)}
+  .w-time{font-size:25px;font-weight:700;letter-spacing:-.045em;
+          font-variant-numeric:tabular-nums}
+  .w-track{height:10px;background:var(--track);border-radius:5px;overflow:hidden}
+  .w-fill{height:100%;border-radius:5px;background:var(--ink)}
+  .w-foot{display:flex;justify-content:space-between;font-size:11.5px;
+          color:var(--ink-2);margin-top:9px;font-variant-numeric:tabular-nums}
+  .widget.mini{width:148px;padding:14px}
+  .widget.mini .w-time{font-size:21px;margin-top:4px}
+
+  .controls{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+  .controls button{font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+    padding:7px 14px;border-radius:999px;border:var(--hair) solid var(--line);
+    background:var(--surface);color:var(--ink-2);transition:.14s}
+  .controls button:hover{border-color:var(--ink-3)}
+  .controls button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .ctrl-sep{width:1px;height:22px;background:var(--line);margin:0 6px}
+
+  .phone-cap{font-size:12px;color:var(--ink-3);text-align:center;margin-top:13px}
+
+  .principles{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:16px}
+  .principle{background:var(--surface);border:var(--hair) solid var(--line);
+             border-radius:13px;padding:17px;transition:background .25s}
+  .principle h3{font-size:14px;font-weight:680;margin-bottom:6px;letter-spacing:-.01em}
+  .principle p{font-size:12.5px;color:var(--ink-2);line-height:1.68}
+  .principle .tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.14em;
+    color:var(--ink-3);margin-bottom:8px;text-transform:uppercase}
+
+  table{width:100%;border-collapse:collapse;background:var(--surface);
+        border:var(--hair) solid var(--line);border-radius:13px;overflow:hidden;font-size:12.5px}
+  th,td{text-align:left;padding:9px 13px;border-bottom:var(--hair) solid var(--line)}
+  th{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);
+     font-weight:700}
+  tr:last-child td{border-bottom:none}
+  td.v{font-weight:650;white-space:nowrap}
+  td.k{color:var(--ink-2)}
+
+  .st{display:none}
+  body[data-state="ok"] .st-ok,
+  body[data-state="close"] .st-close,
+  body[data-state="over"] .st-over{display:inline}
+</style>
+</head>
+<body data-theme="light" data-state="close">
+<div class="wrap">
+
+  <h1>SelfKaizen — Monochrome</h1>
+  <p class="lede">
+    基本は白黒（彩度 0%）。<strong>超過時のみ赤</strong>を1色だけ使います。
+    Light / Dark は <strong>OS の設定に自動追従</strong>します（下の切替は確認用のプレビュー）。
+  </p>
+
+  <div class="controls" style="margin-bottom:34px">
+    <button data-theme="light" class="on">System: Light</button>
+    <button data-theme="dark">System: Dark</button>
+    <span class="ctrl-sep"></span>
+    <button data-state="ok">OK</button>
+    <button data-state="close" class="on">CLOSE</button>
+    <button data-state="over">OVER</button>
+  </div>
+
+  <!-- ============ PROBLEM ============ -->
+  <h2>00 — 状態の伝え方（確定）</h2>
+  <div class="note" style="margin-top:0">
+    基本は<strong>白黒</strong>。リングの状態は<strong>形</strong>で3段階に分けます。
+    赤は<strong>「決めたルールを破った」という1つの意味だけ</strong>に使い、
+    <strong>超過したときだけ</strong>適用します。
+    通常時は赤が1つも出ないため、<strong>赤が出たこと自体が情報</strong>になります。
+  </div>
+
+  <table style="margin-top:18px;max-width:740px">
+    <thead><tr><th>状態</th><th>リングの形</th><th>色</th><th>読み取れる意味</th></tr></thead>
+    <tbody>
+      <tr><td class="k">OK</td><td class="v">途切れた円弧（52%）</td>
+          <td class="v">黒</td><td class="k">まだ余白がある</td></tr>
+      <tr><td class="k">CLOSE</td><td class="v">ほぼ閉じた円弧（92%）</td>
+          <td class="v">黒</td><td class="k">埋まりかけている</td></tr>
+      <tr><td class="k">OVER</td><td class="v">全周の点線</td>
+          <td class="v" style="color:var(--danger)">赤</td>
+          <td class="k">円が壊れた＝超過</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    加えて<strong>文字が状態を明言</strong>します（<code>18m left</code> / <code>42m over</code>）。
+    <strong>形・色・語の三重</strong>で伝えるため、どれか一つを見落としても状態は分かります。
+  </div>
+
+  <table style="margin-top:22px;max-width:740px">
+    <thead><tr><th>赤くなる箇所</th><th>発火条件</th></tr></thead>
+    <tbody>
+      <tr><td class="v">リングと <code>42m over</code> の文字</td>
+          <td class="k">1日の合計が上限を超えた</td></tr>
+      <tr><td class="v">7日間チャートの超過した日</td>
+          <td class="k">その日 上限を超えた</td></tr>
+    </tbody>
+  </table>
+  <div class="note">
+    <strong>赤はこの2箇所のみ。</strong>
+    <strong>勤務時間帯のルールは設けない</strong>方針のため、
+    「いつ何を使ったか」は<strong>アプリ別ランキングと7日間チャートで示し、
+    判断は本人が行います</strong>。アプリが違反を判定して赤く染めることはしません。
+  </div>
+
+  <!-- ============ ICON ============ -->
+  <h2>01 — App icon</h2>
+  <div class="icons">
+    <div class="icon-item">
+      <div class="icon-badge">
+        <svg viewBox="0 0 108 108" role="img" aria-label="Ring">
+          <rect width="108" height="108" fill="#000000"/>
+          <circle cx="54" cy="54" r="25" fill="none" stroke="#3A3A3A" stroke-width="8.5"/>
+          <circle cx="54" cy="54" r="25" fill="none" stroke="#FFFFFF" stroke-width="8.5"
+                  stroke-linecap="round" stroke-dasharray="110 47" transform="rotate(-90 54 54)"/>
+        </svg>
+      </div>
+      <div class="icon-name">A. Ring <span class="badge-langfree">TEXT-FREE</span></div>
+      <div class="icon-desc">
+        黒地に白の円弧。<strong>採用案。</strong>
+        アプリ内のリングと同一形状で、モノクロでも成立します。
+      </div>
+    </div>
+
+    <div class="icon-item">
+      <div class="icon-badge">
+        <svg viewBox="0 0 108 108" role="img" aria-label="Inverted ring">
+          <rect width="108" height="108" fill="#F5F5F5"/>
+          <circle cx="54" cy="54" r="25" fill="none" stroke="#D8D8D8" stroke-width="8.5"/>
+          <circle cx="54" cy="54" r="25" fill="none" stroke="#000000" stroke-width="8.5"
+                  stroke-linecap="round" stroke-dasharray="110 47" transform="rotate(-90 54 54)"/>
+        </svg>
+      </div>
+      <div class="icon-name">A′. Ring inverted <span class="badge-langfree">TEXT-FREE</span></div>
+      <div class="icon-desc">
+        白地に黒。ライトなホーム画面ではこちらが馴染みます。
+        <strong>好みで選べます。</strong>
+      </div>
+    </div>
+
+    <div class="icon-item">
+      <div class="icon-badge">
+        <svg viewBox="0 0 108 108" role="img" aria-label="Enso">
+          <rect width="108" height="108" fill="#000000"/>
+          <path d="M 76.5 44 A 26 26 0 1 0 76.5 64"
+                fill="none" stroke="#FFFFFF" stroke-width="9" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="icon-name">B. Enso <span class="badge-langfree">TEXT-FREE</span></div>
+      <div class="icon-desc">
+        欠けた円。時計にも監視の目にも見えず、
+        <strong>人目に触れても意図が読まれにくい</strong>。
+      </div>
+    </div>
+  </div>
+
+  <h2>ホーム画面での見え方</h2>
+  <div class="homescreen">
+    <div class="hs-app">
+      <div class="hs-icon"><svg viewBox="0 0 108 108"><rect width="108" height="108" fill="#3A3A3A"/><circle cx="54" cy="54" r="26" fill="none" stroke="#8E8E8E" stroke-width="9"/></svg></div>
+      <div class="hs-label">Camera</div>
+    </div>
+    <div class="hs-app"><div class="hs-icon ph">✉</div><div class="hs-label">Mail</div></div>
+    <div class="hs-app">
+      <div class="hs-icon"><svg viewBox="0 0 108 108"><rect width="108" height="108" fill="#000"/><circle cx="54" cy="54" r="25" fill="none" stroke="#3A3A3A" stroke-width="8.5"/><circle cx="54" cy="54" r="25" fill="none" stroke="#FFF" stroke-width="8.5" stroke-linecap="round" stroke-dasharray="110 47" transform="rotate(-90 54 54)"/></svg></div>
+      <div class="hs-label">SelfKaizen</div>
+    </div>
+    <div class="hs-app"><div class="hs-icon ph">♪</div><div class="hs-label">Music</div></div>
+    <div class="hs-app"><div class="hs-icon ph">⚙</div><div class="hs-label">Settings</div></div>
+  </div>
+  <div class="note">
+    黒地のアイコンは、明るい壁紙でも暗い壁紙でも輪郭が立ちます。
+    モノクロは<strong>周囲のアイコンに色があっても浮かない</strong>のが利点です。
+  </div>
+
+  <!-- ============ SCREEN ============ -->
+  <h2>02 — 起動したときの画面</h2>
+  <div class="phones">
+    <div>
+      <div class="phone">
+        <div class="screen">
+          <div class="status"><span>9:41</span><span>◍ ◍ ▮</span></div>
+          <div class="scroll">
+
+            <div class="hero">
+              <div class="hero-label">Today</div>
+              <div class="ring-wrap">
+                <svg viewBox="0 0 206 206" width="196" height="196">
+                  <circle class="ring-track" cx="103" cy="103" r="88" fill="none" stroke-width="14"/>
+                  <circle class="ring-arc" cx="103" cy="103" r="88" fill="none" stroke-width="14"
+                          stroke-linecap="round"/>
+                </svg>
+                <div class="ring-center">
+                  <div class="big">3<span class="u">h</span> 42<span class="u">m</span></div>
+                  <div class="sub">limit 4h 00m</div>
+                </div>
+              </div>
+              <div class="state">
+                <span class="st st-ok">1h 18m left</span>
+                <span class="st st-close">18m left</span>
+                <span class="st st-over">42m over</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <div class="card-title">Top apps</div>
+                <div class="card-hint">today</div>
+              </div>
+              <div class="row"><div class="app">YouTube</div>
+                <div class="track"><div class="fill flag" style="width:88%"></div></div>
+                <div class="val">1h12</div></div>
+              <div class="row"><div class="app">X</div>
+                <div class="track"><div class="fill" style="width:58%"></div></div>
+                <div class="val">48m</div></div>
+              <div class="row"><div class="app">Chrome</div>
+                <div class="track"><div class="fill" style="width:38%"></div></div>
+                <div class="val">31m</div></div>
+              <div class="row"><div class="app">LINE</div>
+                <div class="track"><div class="fill" style="width:27%"></div></div>
+                <div class="val">22m</div></div>
+              <div class="row"><div class="app">Instagram</div>
+                <div class="track"><div class="fill" style="width:34%"></div></div>
+                <div class="val">28m</div></div>
+              <div class="row"><div class="app">Others</div>
+                <div class="track"><div class="fill" style="width:60%"></div></div>
+                <div class="val">49m</div></div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <div class="card-title">7 days</div>
+                <div class="card-hint">avg 3h 12m</div>
+              </div>
+              <div class="week">
+                <div class="day"><div class="bar" style="height:42%"></div><span>M</span></div>
+                <div class="day"><div class="bar" style="height:61%"></div><span>T</span></div>
+                <div class="day"><div class="bar" style="height:78%"></div><span>W</span></div>
+                <div class="day"><div class="bar" style="height:35%"></div><span>T</span></div>
+                <div class="day"><div class="bar over" style="height:96%"></div><span>F</span></div>
+                <div class="day"><div class="bar" style="height:52%"></div><span>S</span></div>
+                <div class="day"><div class="bar today"></div><span>S</span></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+      <div class="phone-cap">起動時（スクロールなしで4要素）</div>
+    </div>
+
+    <div>
+      <div class="widgets" style="flex-direction:column">
+        <div class="widget">
+          <div class="w-top">
+            <div class="w-label">Today</div>
+            <div class="w-time">3h 42m</div>
+          </div>
+          <div class="w-track"><div class="w-fill" style="width:92%"></div></div>
+          <div class="w-foot"><span>limit 4h</span><span>18m left</span></div>
+        </div>
+        <div class="widget mini">
+          <div class="w-label">Today</div>
+          <div class="w-time">3:42</div>
+          <div class="w-track" style="height:9px;margin-top:9px">
+            <div class="w-fill" style="width:92%"></div>
+          </div>
+        </div>
+        <div class="note" style="margin-top:2px">
+          <strong>モノクロでもウィジェットは成立します。</strong>
+          バーの長さが状態を伝えるので色は不要です。
+          アプリを開かずに目に入る場所に置けることが最も効きます。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TOKENS ============ -->
+  <h2>03 — パレット（白黒 ＋ 赤1色）</h2>
+  <div class="swatches">
+    <div class="sw" style="background:#FFFFFF"><b>#FFFFFF</b></div>
+    <div class="sw" style="background:#F5F5F5"><b>#F5F5F5</b></div>
+    <div class="sw" style="background:#E9E9E9"><b>#E9E9E9</b></div>
+    <div class="sw" style="background:#A1A1A1"><b>#A1A1A1</b></div>
+    <div class="sw" style="background:#6E6E6E"><b>#6E6E6E</b></div>
+    <div class="sw" style="background:#000000"><b style="color:#8A8A8A">#000000</b></div>
+  </div>
+  <div class="note" style="margin-top:10px">
+    <strong>Light</strong> — 面 #FFFFFF / 地 #F5F5F5 / 罫 #E4E4E4 / 主 #000 / 副 #6E6E6E / 三次 #A1A1A1
+  </div>
+  <div class="swatches" style="margin-top:22px">
+    <div class="sw" style="background:#0A0A0A"><b style="color:#8A8A8A">#0A0A0A</b></div>
+    <div class="sw" style="background:#151515"><b style="color:#8A8A8A">#151515</b></div>
+    <div class="sw" style="background:#242424"><b style="color:#8A8A8A">#242424</b></div>
+    <div class="sw" style="background:#616161"><b>#616161</b></div>
+    <div class="sw" style="background:#9A9A9A"><b>#9A9A9A</b></div>
+    <div class="sw" style="background:#FFFFFF"><b>#FFFFFF</b></div>
+  </div>
+  <div class="note" style="margin-top:10px">
+    <strong>Dark</strong> — 地 #0A0A0A / 面 #151515 / 罫 #252525 / 主 #FFF / 副 #9A9A9A / 三次 #616161
+  </div>
+
+  <div class="note" style="margin-top:24px;margin-bottom:10px">
+    <strong>アクセント ── 超過時のみ使う赤</strong>
+  </div>
+  <div class="swatches" style="max-width:240px">
+    <div class="sw" style="background:#C62828"><b style="color:#FFF">#C62828</b></div>
+    <div class="sw" style="background:#FF453A"><b style="color:#000">#FF453A</b></div>
+  </div>
+  <div class="note" style="margin-top:10px">
+    Light 用 <strong>#C62828</strong>（地 #F5F5F5 上で <strong>5.16:1</strong>）／
+    Dark 用 <strong>#FF453A</strong>（地 #0A0A0A 上で <strong>5.81:1</strong>）。
+    どちらも WCAG AA（本文 4.5:1）を満たします。<strong>実測値です。</strong>
+  </div>
+
+  <!-- ============ PRINCIPLES ============ -->
+  <h2>04 — 判断と、正直な懸念</h2>
+  <div class="principles">
+    <div class="principle">
+      <div class="tag">トレードオフ</div>
+      <h3>状態が読めるまで僅かに遅くなる</h3>
+      <p>
+        色は<strong>前注意的に</strong>効きます（見る前に伝わる）。形は<strong>注意して</strong>読みます。
+        モノクロ化で状態把握は数十ミリ秒遅くなります。
+        代わりに得るのは<strong>上質さ・静けさ・長く使えること</strong>。
+        毎日開く道具では妥当な交換と判断しました。
+      </p>
+    </div>
+
+    <div class="principle">
+      <div class="tag">代償設計</div>
+      <h3>形・太さ・語で差をつける</h3>
+      <p>
+        途切れた弧 → 閉じた弧 → 全周の点線。<strong>3段階を形だけで区別</strong>します。
+        さらに <code>left</code> / <code>over</code> の語が明言するので、
+        形を見落としても文章で分かる。<strong>二重の冗長性</strong>を意図的に持たせています。
+      </p>
+    </div>
+
+    <div class="principle">
+      <div class="tag">赤の規律</div>
+      <h3>赤＝「1日の上限を超えた」1つだけ</h3>
+      <p>
+        赤の意味を<strong>1つに固定</strong>します。
+        勤務時間帯のルールを設けないため、赤くなるのは<strong>上限超過のときだけ</strong>。
+        通常時は完全なモノクロで、<strong>赤が出たこと自体が情報</strong>になります。
+      </p>
+    </div>
+
+    <div class="principle">
+      <div class="tag">リスク（軽減済）</div>
+      <h3>「上質に見える」問題は赤で軽減</h3>
+      <p>
+        白黒は何でも格好よく見えるため、超過が単なる装飾に見える危険がありました。
+        赤の導入で<strong>この危険は大きく下がりました</strong>。
+        ただし赤は<strong>気づかせる</strong>だけで、行動そのものは変えません。
+      </p>
+    </div>
+
+    <div class="principle">
+      <div class="tag">正直な懸念</div>
+      <h3>この画面は依然として自分を止められない</h3>
+      <p>
+        モノクロ化は<strong>見た目の問題を解決するだけで、行動の問題は解決しません</strong>。
+        記録＋可視化のみの設計では、見なければ何も起きない。
+        <strong>ウィジェットと通知</strong>が要ります。
+      </p>
+    </div>
+
+    <div class="principle">
+      <div class="tag">アイコン</div>
+      <h3>モノクロ化でむしろ強化された</h3>
+      <p>
+        色に頼らなくなったぶん、周囲のカラフルなアイコンの中で
+        <strong>黒は輪郭として最も強く立つ</strong>。
+        黒地・白の円弧を推奨します。
+      </p>
+    </div>
+
+    <div class="principle">
+      <div class="tag">実装</div>
+      <h3>2テーマは変数だけで切替</h3>
+      <p>
+        この Light/Dark は CSS 変数の差し替えだけで成立しています。
+        実装でも<strong>同じトークン構造</strong>を使えば、
+        テーマ追加は変数セットの追加だけになります。
+      </p>
+    </div>
+  </div>
+
+  <h2>確認したいこと</h2>
+  <div class="note">
+    <strong>Light / Dark はシステム追従で確定。</strong>
+    このページの切替は確認用のプレビューで、実機では OS の設定に自動で従います。
+    <br><br>
+    <strong>赤の使い方は確定（案B: 両方赤）。</strong>
+    赤＝「ルールが破られた」という単一の意味に固定し、
+    赤は<strong>上限超過のときだけ</strong>（リング・数字・7日間チャートの超過日）。
+    <br>通常時は赤が1つも出ないため、<strong>赤が出たこと自体が情報</strong>になります。
+    <br><br>
+    <strong>Phase 3（WorkManager）は未着手のまま止まっています。</strong>
+  </div>
+
+</div>
+
+<script>
+  function bind(attr){
+    document.querySelectorAll('[data-'+attr+']').forEach(function(b){
+      b.addEventListener('click', function(){
+        document.body.dataset[attr] = b.dataset[attr];
+        document.querySelectorAll('[data-'+attr+']').forEach(function(x){
+          x.classList.toggle('on', x === b);
+        });
+      });
+    });
+  }
+  bind('theme');
+  bind('state');
+</script>
+</body>
+</html>

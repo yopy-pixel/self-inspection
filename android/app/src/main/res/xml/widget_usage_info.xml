@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  標準ウィジェットの定義（SPEC §7）。
+
+  `updatePeriodMillis` は **30分が下限**（Android の制約）。
+  これだけでは日中ずれるため、実際の更新は収集完了時に
+  `WidgetUpdateWorker` を走らせて行う。ここは**保険**として置く
+  （収集が止まった場合でも、少なくとも30分ごとには最新化される）。
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/widget_usage"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_description" />

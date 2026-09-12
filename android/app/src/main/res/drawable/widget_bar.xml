@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ウィジェットのバー（SPEC §7）。
+
+  **色ではなく長さで状態を伝える。** だから塗りは無彩色でよい。
+  超過時は長さが 100% で止まる（＝満杯）ので、
+  「張り付いている」こと自体が合図になる。
+
+  ミニと標準で同じ図形を使う（形の一貫性を保つ）。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/widget_track" />
+            <corners android:radius="4dp" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <solid android:color="@color/widget_bar" />
+                <corners android:radius="4dp" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>

@@ -1,0 +1,24 @@
+{
+  "name": "self-kaizen-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SelfKaizen 集約サーバー（Cloudflare Workers + D1）",
+  "scripts": {
+    "test": "node --test --experimental-strip-types test/server.test.ts",
+    "dev": "node --experimental-strip-types dev-server.ts",
+    "dev:wrangler": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply self-kaizen --local",
+    "db:migrate": "wrangler d1 migrations apply self-kaizen --remote",
+    "typecheck": "tsc --noEmit",
+    "probe": "node test/security-probe.mjs",
+    "preview": "node --experimental-strip-types render-preview.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260911.1",
+    "@types/node": "^22.20.2",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.131.1"
+  }
+}

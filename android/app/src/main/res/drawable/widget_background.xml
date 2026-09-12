@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ウィジェットの背景。
+  面の色に角丸を付ける。地（壁紙）と区別できる最小限の処理にとどめる。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_surface" />
+    <corners android:radius="16dp" />
+</shape>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ウィジェット用の色（Light）。
+
+  **`ui/theme/Theme.kt` の KaizenColors と一致させること。**
+  Compose の色はコード側、ウィジェットは XML 側に必要で、
+  残念ながら二重管理になる。ずれると「アプリとウィジェットで色が違う」
+  という状態になるため、変更時は両方を直す。
+
+  SPEC §2: 純グレー（R=G=B）。赤は使わない（§7「色は不要」）。
+  Dark は values-night/colors.xml にある。
+-->
+<resources>
+    <!-- 面 -->
+    <color name="widget_surface">#FFFFFF</color>
+    <!-- 主文字 -->
+    <color name="widget_ink">#000000</color>
+    <!-- 副文字 -->
+    <color name="widget_ink2">#6E6E6E</color>
+    <!-- バーのトラック -->
+    <color name="widget_track">#E9E9E9</color>
+    <!-- バーの塗り -->
+    <color name="widget_bar">#000000</color>
+</resources>

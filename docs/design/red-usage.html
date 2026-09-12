@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SelfKaizen — 赤をどこで使うか</title>
+<style>
+  body[data-theme="light"]{
+    --bg:#F5F5F5; --surface:#FFFFFF; --ink:#000000;
+    --ink-2:#6E6E6E; --ink-3:#A1A1A1;
+    --line:#E4E4E4; --track:#E9E9E9; --danger:#C62828;
+  }
+  body[data-theme="dark"]{
+    --bg:#0A0A0A; --surface:#151515; --ink:#FFFFFF;
+    --ink-2:#9A9A9A; --ink-3:#616161;
+    --line:#252525; --track:#242424; --danger:#FF453A;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Hiragino Sans","Yu Gothic",sans-serif;
+    background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;
+    padding:48px 28px 90px;line-height:1.7;transition:background .25s,color .25s;
+  }
+  .wrap{max-width:1240px;margin:0 auto}
+  h1{font-size:26px;font-weight:700;letter-spacing:-.025em;margin-bottom:8px}
+  .lede{color:var(--ink-2);font-size:14px;max-width:760px;margin-bottom:14px}
+  .lede strong{color:var(--ink)}
+
+  .controls{display:flex;gap:8px;margin:26px 0 34px;flex-wrap:wrap;align-items:center}
+  .controls button{font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+    padding:7px 14px;border-radius:999px;border:1px solid var(--line);
+    background:var(--surface);color:var(--ink-2);transition:.14s}
+  .controls button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+  .grid{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+  .panel{width:288px}
+  .panel-head{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+  .tag{font-size:11px;font-weight:800;letter-spacing:.1em;
+       border:1.5px solid var(--ink);border-radius:5px;padding:1px 7px}
+  .panel-name{font-size:13px;font-weight:700}
+
+  .screen{background:var(--bg);border:1px solid var(--line);border-radius:20px;
+          padding:16px 15px 14px;min-height:322px}
+  .hero{display:flex;flex-direction:column;align-items:center}
+  .hero-label{font-size:9.5px;font-weight:700;letter-spacing:.2em;
+              text-transform:uppercase;color:var(--ink-3);margin-bottom:8px}
+  .ring-wrap{position:relative;width:128px;height:128px}
+  .ring-wrap svg{transform:rotate(-90deg)}
+  .ring-center{position:absolute;inset:0;display:flex;flex-direction:column;
+               align-items:center;justify-content:center;gap:2px}
+  .big{font-size:25px;font-weight:700;letter-spacing:-.045em;
+       font-variant-numeric:tabular-nums;line-height:1}
+  .big .u{font-size:12px;font-weight:650}
+  .sub{font-size:9.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .state{margin-top:9px;font-size:12px;font-weight:650}
+
+  .ring-track{stroke:var(--track)}
+  .ring-arc{stroke:var(--ink);stroke-linecap:round}
+
+  /* 状態: 超過 */
+  .is-over .ring-arc{stroke-dasharray:6 11;stroke-linecap:butt}
+  .is-over .ring-track{opacity:.18}
+  /* 状態: 通常（92%） */
+  .is-close .ring-arc{stroke-dasharray:509 44}
+
+  /* どれを赤くするか（パネルごとのスイッチ） */
+  .red-ring.is-over .ring-arc{stroke:var(--danger)}
+  .red-ring.is-over .ring-track{stroke:var(--danger)}
+  .red-ring.is-over .state{color:var(--danger);font-weight:750}
+
+  /* 違反マーカー */
+  .violation{margin-top:16px;padding:9px 0 9px 12px;border-left:3px solid var(--ink);
+    display:flex;gap:9px;align-items:flex-start}
+  .v-icon{font-size:13px;line-height:1.4}
+  .v-title{font-size:12px;font-weight:700;line-height:1.4}
+  .v-meta{font-size:10.5px;color:var(--ink-2);margin-top:1px;
+          font-variant-numeric:tabular-nums}
+  .red-violation .violation{border-left-color:var(--danger)}
+  .red-violation .v-icon,
+  .red-violation .v-title{color:var(--danger)}
+
+  /* ランキングの違反バー */
+  .rank{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .rk{display:grid;grid-template-columns:56px 1fr 34px;gap:8px;align-items:center;
+      margin-bottom:6px}
+  .rk:last-child{margin-bottom:0}
+  .rk-name{font-size:11px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tk{height:7px;background:var(--track);border-radius:4px;overflow:hidden}
+  .fl{height:100%;border-radius:4px;background:var(--ink-2)}
+  .fl.flag{background:var(--ink)}
+  .rk-val{font-size:10.5px;text-align:right;color:var(--ink-2);
+          font-variant-numeric:tabular-nums}
+  .red-bar .fl.flag{background:var(--danger)}
+
+  .note{font-size:12px;color:var(--ink-2);margin-top:11px;line-height:1.6}
+  .note b{color:var(--ink)}
+  .count{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;
+    border-radius:999px;border:1px solid var(--line);color:var(--ink-2);margin-top:8px}
+
+  table{width:100%;border-collapse:collapse;background:var(--surface);
+        border:1px solid var(--line);border-radius:12px;overflow:hidden;
+        font-size:12.5px;margin-top:14px}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
+  th{font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+     color:var(--ink-3);font-weight:700}
+  tr:last-child td{border-bottom:none}
+  td.c{text-align:center;font-weight:700}
+  .y{color:var(--danger)}
+  .n{color:var(--ink-3)}
+  h2{font-size:11.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+     color:var(--ink-3);margin:56px 0 18px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+  .prose{font-size:13px;color:var(--ink-2);max-width:760px;margin-top:12px}
+  .prose strong{color:var(--ink)}
+  .prose ul{margin:8px 0 0 20px}
+  .prose li{margin-bottom:5px}
+</style>
+</head>
+<body data-theme="light">
+<div class="wrap">
+
+  <div style="border:2px solid var(--danger);border-radius:12px;padding:14px 18px;
+              margin-bottom:32px;background:var(--surface)">
+    <div style="font-size:12px;font-weight:800;letter-spacing:.14em;
+                text-transform:uppercase;color:var(--danger);margin-bottom:6px">
+      この資料は無効になりました
+    </div>
+    <div style="font-size:13.5px;color:var(--ink-2);line-height:1.7">
+      <strong>勤務時間帯ルールを設けない</strong>方針が確定したため（2026-09-14）、
+      ここで比較している「違反マーカーを赤くするか」という問い自体が消滅しました。<br>
+      現在の赤の使い方は<strong>上限超過のときのみ</strong>です。
+      最新の仕様は <code>SPEC.md</code> を参照してください。<br>
+      <span style="font-size:12.5px">※ このページは判断の経緯の記録として残しています。</span>
+    </div>
+  </div>
+
+  <h1>赤をどこで使うか</h1>
+  <p class="lede">
+    同じ画面（<strong>上限超過かつ勤務時間帯の違反あり</strong>）を4通りで並べました。
+    何が赤くなるかの違いだけを見てください。
+  </p>
+
+  <div class="controls">
+    <button data-theme="light" class="on">Light</button>
+    <button data-theme="dark">Dark</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- 0: 通常時 -->
+    <div class="panel">
+      <div class="panel-head"><span class="tag">REF</span><span class="panel-name">通常時（赤ゼロ）</span></div>
+      <div class="screen is-close">
+        <div class="hero">
+          <div class="hero-label">Today</div>
+          <div class="ring-wrap">
+            <svg viewBox="0 0 206 206" width="128" height="128">
+              <circle class="ring-track" cx="103" cy="103" r="88" fill="none" stroke-width="14"/>
+              <circle class="ring-arc" cx="103" cy="103" r="88" fill="none" stroke-width="14"/>
+            </svg>
+            <div class="ring-center">
+              <div class="big">3<span class="u">h</span> 42<span class="u">m</span></div>
+              <div class="sub">limit 4h 00m</div>
+            </div>
+          </div>
+          <div class="state">18m left</div>
+        </div>
+        <div class="rank">
+          <div class="rk"><div class="rk-name">YouTube</div><div class="tk"><div class="fl" style="width:72%"></div></div><div class="rk-val">1h12</div></div>
+          <div class="rk"><div class="rk-name">X</div><div class="tk"><div class="fl" style="width:58%"></div></div><div class="rk-val">48m</div></div>
+          <div class="rk"><div class="rk-name">Chrome</div><div class="tk"><div class="fl" style="width:38%"></div></div><div class="rk-val">31m</div></div>
+        </div>
+      </div>
+      <div class="note">違反なし・未超過。<br><b>画面に色が1つもない状態</b>が基本。</div>
+    </div>
+
+    <!-- A: 現状 -->
+    <div class="panel red-ring is-over">
+      <div class="panel-head"><span class="tag">A</span><span class="panel-name">現状：超過のみ赤</span></div>
+      <div class="screen">
+        <div class="hero">
+          <div class="hero-label">Today</div>
+          <div class="ring-wrap">
+            <svg viewBox="0 0 206 206" width="128" height="128">
+              <circle class="ring-track" cx="103" cy="103" r="88" fill="none" stroke-width="14"/>
+              <circle class="ring-arc" cx="103" cy="103" r="88" fill="none" stroke-width="14"/>
+            </svg>
+            <div class="ring-center">
+              <div class="big">4<span class="u">h</span> 42<span class="u">m</span></div>
+              <div class="sub">limit 4h 00m</div>
+            </div>
+          </div>
+          <div class="state">42m over</div>
+        </div>
+        <div class="violation">
+          <div class="v-icon">⚠</div>
+          <div><div class="v-title">YouTube · 23m</div>
+               <div class="v-meta">12:10–12:33 · work hours</div></div>
+        </div>
+        <div class="rank">
+          <div class="rk"><div class="rk-name">YouTube</div><div class="tk"><div class="fl flag" style="width:88%"></div></div><div class="rk-val">1h12</div></div>
+          <div class="rk"><div class="rk-name">X</div><div class="tk"><div class="fl" style="width:58%"></div></div><div class="rk-val">48m</div></div>
+        </div>
+      </div>
+      <div class="note">
+        赤は<b>リングと数字の3箇所</b>のみ。違反は<b>黒い左罫線＋⚠</b>で強調。
+        <br><b>赤＝「今日は予算オーバー」という1つの状態</b>を表す。
+      </div>
+      <div class="count">赤は 1 箇所（リング）</div>
+    </div>
+
+    <!-- B: 両方赤 -->
+    <div class="panel red-ring red-violation red-bar is-over">
+      <div class="panel-head"><span class="tag" style="background:var(--danger);border-color:var(--danger);color:#fff">B ✓</span><span class="panel-name">両方赤 <span style="font-size:11px;color:var(--danger);font-weight:700">← 採用</span></span></div>
+      <div class="screen">
+        <div class="hero">
+          <div class="hero-label">Today</div>
+          <div class="ring-wrap">
+            <svg viewBox="0 0 206 206" width="128" height="128">
+              <circle class="ring-track" cx="103" cy="103" r="88" fill="none" stroke-width="14"/>
+              <circle class="ring-arc" cx="103" cy="103" r="88" fill="none" stroke-width="14"/>
+            </svg>
+            <div class="ring-center">
+              <div class="big">4<span class="u">h</span> 42<span class="u">m</span></div>
+              <div class="sub">limit 4h 00m</div>
+            </div>
+          </div>
+          <div class="state">42m over</div>
+        </div>
+        <div class="violation">
+          <div class="v-icon">⚠</div>
+          <div><div class="v-title">YouTube · 23m</div>
+               <div class="v-meta">12:10–12:33 · work hours</div></div>
+        </div>
+        <div class="rank">
+          <div class="rk"><div class="rk-name">YouTube</div><div class="tk"><div class="fl flag" style="width:88%"></div></div><div class="rk-val">1h12</div></div>
+          <div class="rk"><div class="rk-name">X</div><div class="tk"><div class="fl" style="width:58%"></div></div><div class="rk-val">48m</div></div>
+        </div>
+      </div>
+      <div class="note">
+        リング・違反・違反アプリのバーが全部赤。
+        <br><b>「悪い」が一貫する</b>が、違反が増えると赤が埋まる。
+      </div>
+      <div class="count">赤は 3 箇所</div>
+    </div>
+
+    <!-- C: 違反のみ赤 -->
+    <div class="panel red-violation red-bar is-over">
+      <div class="panel-head"><span class="tag">C</span><span class="panel-name">違反のみ赤</span></div>
+      <div class="screen">
+        <div class="hero">
+          <div class="hero-label">Today</div>
+          <div class="ring-wrap">
+            <svg viewBox="0 0 206 206" width="128" height="128">
+              <circle class="ring-track" cx="103" cy="103" r="88" fill="none" stroke-width="14"/>
+              <circle class="ring-arc" cx="103" cy="103" r="88" fill="none" stroke-width="14"/>
+            </svg>
+            <div class="ring-center">
+              <div class="big">4<span class="u">h</span> 42<span class="u">m</span></div>
+              <div class="sub">limit 4h 00m</div>
+            </div>
+          </div>
+          <div class="state">42m over</div>
+        </div>
+        <div class="violation">
+          <div class="v-icon">⚠</div>
+          <div><div class="v-title">YouTube · 23m</div>
+               <div class="v-meta">12:10–12:33 · work hours</div></div>
+        </div>
+        <div class="rank">
+          <div class="rk"><div class="rk-name">YouTube</div><div class="tk"><div class="fl flag" style="width:88%"></div></div><div class="rk-val">1h12</div></div>
+          <div class="rk"><div class="rk-name">X</div><div class="tk"><div class="fl" style="width:58%"></div></div><div class="rk-val">48m</div></div>
+        </div>
+      </div>
+      <div class="note">
+        超過は黒い点線リングのまま。違反だけ赤。
+        <br><b>「今すぐやめられるもの」に赤を使う</b>考え方。
+      </div>
+      <div class="count">赤は 2 箇所（違反）</div>
+    </div>
+
+  </div>
+
+  <h2>何が赤くなるか</h2>
+  <table>
+    <thead>
+      <tr><th>要素</th><th style="text-align:center">REF</th>
+          <th style="text-align:center">A（現状）</th>
+          <th style="text-align:center">B</th><th style="text-align:center">C</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>リング（超過）</td>
+          <td class="c n">—</td><td class="c y">赤</td>
+          <td class="c y">赤</td><td class="c n">黒</td></tr>
+      <tr><td>「42m over」の文字</td>
+          <td class="c n">—</td><td class="c y">赤</td>
+          <td class="c y">赤</td><td class="c n">黒</td></tr>
+      <tr><td>違反マーカー（左罫線・⚠）</td>
+          <td class="c n">—</td><td class="c n">黒</td>
+          <td class="c y">赤</td><td class="c y">赤</td></tr>
+      <tr><td>違反アプリのバー</td>
+          <td class="c n">—</td><td class="c n">黒</td>
+          <td class="c y">赤</td><td class="c y">赤</td></tr>
+      <tr><td>赤が出る要素数</td>
+          <td class="c n">0</td><td class="c">1</td>
+          <td class="c">3</td><td class="c">2</td></tr>
+    </tbody>
+  </table>
+
+  <h2>判断の分かれ目</h2>
+  <div class="prose">
+    <strong>2種類の「悪さ」は性質が違います。</strong>
+    <ul>
+      <li><strong>超過（OVER）</strong> — 1日の合計が上限を超えた状態。
+           <strong>1日を通して1つだけ</strong>存在し、一度超えたら夜まで続く。</li>
+      <li><strong>勤務時間帯の違反</strong> — 禁止アプリを就業中に使った出来事。
+           <strong>1日に何度も発生しうる</strong>。</li>
+    </ul>
+    <br>
+    A（現状）は「赤＝<strong>その日の状態</strong>」という単数の意味に限定しています。
+    違反は<strong>複数並ぶリスト</strong>なので、個々を赤くすると赤が背景化しやすい。
+    ただし違反の方が<strong>具体的で行動に移しやすい</strong>情報であることも事実で、
+    <strong>C（違反に赤）の方が実効性が高い可能性があります。</strong>
+    <br><br>
+    どちらが正しいかは<strong>違反が実際にどれくらいの頻度で起きるか</strong>次第です。
+    1日に0〜1回なら赤は強く効き、5回以上なら赤は意味を失います。
+    <strong>その頻度は、これから作る収集機能（Phase 3〜4）で実データが取れます。</strong>
+  </div>
+
+  <h2>私の推奨</h2>
+  <div class="prose">
+    <strong>今は決めず、Phase 4 で実データを見てから決める</strong>ことを推奨します。
+    <ul>
+      <li>違反が <strong>1日0〜1回</strong> → <strong>C</strong>（違反に赤。その場で止まる力が最も強い）</li>
+      <li>違反が <strong>1日2〜4回</strong> → <strong>B</strong>（両方赤。一貫性を優先）</li>
+      <li>違反が <strong>1日5回以上</strong> → <strong>A</strong>（違反は黒。赤を状態に温存）</li>
+    </ul>
+    <br>
+    なお、どの案でも<strong>違反マーカーには既に黒い左罫線と⚠が付いており、
+    強調自体はされています</strong>。色を足すかどうかの話であって、
+    目立たせないという話ではありません。
+  </div>
+
+</div>
+<script>
+  document.querySelectorAll('[data-theme]').forEach(function(b){
+    b.addEventListener('click', function(){
+      document.body.dataset.theme=b.dataset.theme;
+      document.querySelectorAll('[data-theme]').forEach(function(x){
+        x.classList.toggle('on', x===b);
+      });
+    });
+  });
+</script>
+</body>
+</html>

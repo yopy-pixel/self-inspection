@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive icon（Android 8.0+ / API 26+）。
+  minSdk が 26 なので、この1ファイルで全対応端末をカバーできる
+  （PNG のフォールバックは不要）。
+
+  設計: design/SPEC.md §4
+  monochrome 層は Android 13+ のテーマ対応アイコンで使われる。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>

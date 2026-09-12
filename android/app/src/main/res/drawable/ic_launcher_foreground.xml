@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  アプリアイコンの前景層（リング）。
+
+  design/SPEC.md §4 の値をそのまま使う:
+    リング地   #3A3A3A
+    リング前景  #FFFFFF
+    半径 r=25（108×108 viewBox）／線幅 8.5
+    塗り率 70%（stroke-dasharray="110 47" 相当）
+
+  ベクタードローアブルは stroke-dasharray を持てないため、
+  252.1°（= 70%）の弧を明示的なパスで描いている。
+  始点は12時、時計回り。終点は 162.1° の位置。
+
+  安全領域: リング外径 58.5 < 中央66dp なので、
+  円形・角丸・squircle のどのマスクでも欠けない。
+  四隅には何も置いていない。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- リング地（全周）。2つの半円で描く（1つの弧では360°を表現できないため） -->
+    <path
+        android:pathData="M54,29 A25,25 0 1 1 54,79 A25,25 0 1 1 54,29"
+        android:strokeColor="#3A3A3A"
+        android:strokeWidth="8.5" />
+
+    <!-- リング前景（70% = 252.1°、12時から時計回り） -->
+    <path
+        android:pathData="M54,29 A25,25 0 1 1 30.210,61.684"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="8.5"
+        android:strokeLineCap="round" />
+</vector>

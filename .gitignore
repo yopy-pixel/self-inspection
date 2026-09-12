@@ -1,0 +1,71 @@
+# =============================================================================
+# 秘密情報（絶対にコミットしない）
+# =============================================================================
+
+# サーバーのローカル開発用シークレット（ADMIN_TOKEN など）
+# `wrangler dev` が読む。本番は `wrangler secret put` で設定する。
+server/.dev.vars
+server/.env
+server/.env.*
+
+# Android の署名情報
+android/keystore.properties
+android/*.jks
+android/*.keystore
+
+# =============================================================================
+# ビルド成果物
+# =============================================================================
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/.kotlin/
+android/.idea/
+android/captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# ローカル設定（SDK の絶対パスが入る）
+android/local.properties
+
+# サーバー
+server/node_modules/
+server/.wrangler/
+server/dist/
+server/coverage/
+
+# =============================================================================
+# 内部作業ドキュメント（公開しない）
+#
+# リポジトリには残すが追跡しない。開発中の申し送り・検討中項目・
+# 調査記録など、外部に公開する意味のないものをここに列挙する。
+# =============================================================================
+docs/PROGRESS.md
+docs/OPEN-ISSUES.md
+docs/PLAN-android.md
+docs/ANDROID16-VERIFICATION.md
+docs/SERVER-READINESS.md
+docs/INVESTIGATION-server.md
+docs/DESIGN-serverless.md
+docs/PROMPT-*.md
+docs/RESEARCH-RESULTS*.md
+
+# =============================================================================
+# OS / エディタ
+# =============================================================================
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# =============================================================================
+# ログ
+# =============================================================================
+*.log
+!docs/**/*.log

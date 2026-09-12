@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  アプリUIの語彙（全量）。
+  design/SPEC.md §1 の方針:
+    - 記号で足りるなら言葉を使わない
+    - 数字は言語ではない
+    - 文章は最小限・英語
+  ここに無い文字列を画面に足すときは、まず記号で代替できないか検討すること。
+-->
+<resources>
+    <string name="app_name">SelfKaizen</string>
+
+    <!-- 権限導線 -->
+    <string name="permission_title">Usage access</string>
+    <string name="permission_body">SelfKaizen needs "Usage access" to record per-app screen time.</string>
+    <string name="permission_action">Open settings</string>
+    <string name="permission_granted">Usage access: granted</string>
+    <string name="permission_denied">Usage access: not granted</string>
+    <string name="permission_ready">Recording automatically in the background.</string>
+
+    <!-- ダッシュボード -->
+    <string name="label_today">Today</string>
+    <string name="label_limit">limit %1$s</string>
+    <string name="label_top_apps">Top apps</string>
+    <string name="label_7days">7 days</string>
+    <string name="label_others">Others</string>
+    <string name="label_avg">avg %1$s</string>
+
+    <!-- 残り時間の状態。動詞は left / over の2語のみ -->
+    <string name="state_left">%1$s left</string>
+    <string name="state_over">%1$s over</string>
+    <string name="state_disabled">No limit set</string>
+
+    <!-- 収集状態（B-4: 黙った故障を防ぐ） -->
+    <string name="label_updated">updated %1$s</string>
+    <string name="label_never_collected">not yet collected</string>
+    <string name="label_stale">collection stalled (%1$s ago)</string>
+
+    <!-- 曜日（1文字。7列に収めるため） -->
+    <string name="dow_m">M</string>
+    <string name="dow_t">T</string>
+    <string name="dow_w">W</string>
+    <string name="dow_f">F</string>
+    <string name="dow_s">S</string>
+
+    <string name="cd_ring">Today\'s screen time against the limit</string>
+
+    <!--
+      設定画面。
+      SPEC §1 の方針は変わらない（記号優先・最小限・英語）。
+      ただし設定は数値入力とサーバー接続が必要なため、ダッシュボードより
+      語彙が増える。増えた分はここに集約する。
+    -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_open">Settings</string>
+    <string name="settings_close">Done</string>
+
+    <!-- 上限 -->
+    <string name="settings_section_limit">Limit</string>
+    <string name="settings_limit_hours">limit (h)</string>
+    <string name="settings_approach_minutes">close threshold (m)</string>
+    <string name="settings_limit_enabled">Track against a limit</string>
+    <string name="settings_limit_hint">close = ring stays black but the remaining time is short</string>
+
+    <!-- 同期 -->
+    <string name="settings_section_sync">Server sync</string>
+    <string name="settings_sync_enabled">Sync to server</string>
+    <string name="settings_sync_hint">The app works fully without sync. Your records stay on this device.</string>
+    <string name="settings_endpoint">Endpoint (https)</string>
+    <string name="settings_device_id">Device ID</string>
+    <string name="settings_token">Token</string>
+    <string name="settings_paste">Paste credentials</string>
+    <string name="settings_paste_hint">Paste the JSON from the server\'s device registration</string>
+    <string name="settings_test">Test connection</string>
+    <string name="settings_testing">Testing…</string>
+    <string name="settings_test_ok">Connected</string>
+    <string name="settings_test_unauthorized">Token rejected (%1$d)</string>
+    <string name="settings_test_failed">Failed: %1$s</string>
+    <string name="settings_sync_now">Sync now</string>
+    <string name="settings_last_sync">last sync %1$s</string>
+    <string name="settings_never_synced">never synced</string>
+    <string name="settings_saved">Saved</string>
+    <string name="settings_https_required">Endpoint must start with https://</string>
+
+    <!-- プライバシー（docs/PRIVACY.md の要約。設定画面で明示する） -->
+    <string name="settings_privacy">Only package name, app label, start/end time and local date are sent. Never window titles, URLs, or what you typed.</string>
+
+    <!--
+      ウィジェット（SPEC §7）。
+      **これが本命の介入点。** アプリを開かずに今日の状況が目に入る。
+      語彙は最小限に保つ（§1 の方針）。
+    -->
+    <string name="widget_description">Today\'s screen time</string>
+    <string name="widget_description_mini">Today\'s screen time (compact)</string>
+    <!-- 初期表示のダミー。すぐ Worker が実値に差し替える -->
+    <string name="widget_placeholder_total">0m</string>
+    <string name="widget_placeholder_detail">—</string>
+    <string name="widget_placeholder_compact">0:00</string>
+    <!-- 収集が止まっている / 権限が無いときの案内（B-4 の可観測性） -->
+    <string name="widget_no_permission">Usage access needed</string>
+    <string name="widget_stale">not collected %1$s</string>
+    <!--
+      数字を出せないときの記号。
+      **0m と表示してはいけない**（「使っていない」と誤読される）。
+      上限が無い場合も数字は出すが、バーは隠す。
+    -->
+    <string name="widget_none">—</string>
+</resources>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  標準ウィジェット（SPEC §7）。
+
+     Today
+     3h 42m        ← 主役。太く大きく
+     ▓▓▓▓▓▓▓░░░    ← バー。長さで状態を伝える
+     limit 4h 00m · 18m left
+
+  文字列はすべて strings.xml から供給する（ハードコードしない）。
+  ここに書くのは初期表示のダミーで、実際の値は Worker が差し替える。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="14dp">
+
+    <TextView
+        android:id="@+id/widget_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/label_today"
+        android:textColor="@color/widget_ink2"
+        android:textSize="10sp"
+        android:letterSpacing="0.12"
+        android:maxLines="1" />
+
+    <TextView
+        android:id="@+id/widget_total"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="@string/widget_placeholder_total"
+        android:textColor="@color/widget_ink"
+        android:textSize="30sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="none" />
+
+    <ProgressBar
+        android:id="@+id/widget_bar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_marginTop="8dp"
+        android:max="1000"
+        android:progress="0"
+        android:progressDrawable="@drawable/widget_bar" />
+
+    <TextView
+        android:id="@+id/widget_detail"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/widget_placeholder_detail"
+        android:textColor="@color/widget_ink2"
+        android:textSize="11sp"
+        android:maxLines="1"
+        android:ellipsize="end" />
+</LinearLayout>

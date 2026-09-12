@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  テーマ対応アイコン用（Android 13+ の monochrome 層）。
+
+  OS が単色で塗るため、**アルファチャンネルだけ**が意味を持つ。
+  そのためリング地（#3A3A3A）は含めず、弧だけを描く。
+  こうすると他のアイコンと並べたときにシルエットが揃う。
+
+  モノクロの設計方針（SPEC §0）と相性が良い。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M54,29 A25,25 0 1 1 30.210,61.684"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="8.5"
+        android:strokeLineCap="round" />
+</vector>

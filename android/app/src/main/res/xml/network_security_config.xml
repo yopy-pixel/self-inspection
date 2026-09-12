@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  本番用のネットワーク設定。
+
+  平文 HTTP を**全面的に禁止**する（docs/PRIVACY.md §3.1）。
+  サーバー側でも http: を拒否しているが、端末側でも防ぐ。
+  片方だけだと設定ミスで素通りする。
+
+  開発用の例外（10.0.2.2 / localhost）は src/debug 側にのみ置いてある。
+  このファイルはリリースビルドに適用される。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

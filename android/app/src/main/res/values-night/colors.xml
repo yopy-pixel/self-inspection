@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ウィジェット用の色（Dark）。
+  OS のダークモード設定に自動追従する（SPEC §5「手動切替は設けない」）。
+
+  値は `ui/theme/Theme.kt` の DarkColors と一致させること。
+-->
+<resources>
+    <color name="widget_surface">#151515</color>
+    <color name="widget_ink">#FFFFFF</color>
+    <color name="widget_ink2">#9A9A9A</color>
+    <color name="widget_track">#242424</color>
+    <color name="widget_bar">#FFFFFF</color>
+</resources>
