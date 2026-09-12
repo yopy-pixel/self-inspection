@@ -46,7 +46,6 @@ data class SettingsUiState(
     // 状態表示
     val connection: ConnectionTestState = ConnectionTestState.Idle,
     val lastSyncAt: Long? = null,
-    val lastSyncResult: String? = null,
     val savedAt: Long? = null,
     val error: String? = null
 ) {
@@ -98,9 +97,6 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             val lastSyncAt = withContext(Dispatchers.IO) {
                 dao.getState(SyncWorker.KEY_LAST_SYNC_AT)?.toLongOrNull()
             }
-            val lastResult = withContext(Dispatchers.IO) {
-                dao.getState(SyncWorker.KEY_LAST_RESULT)
-            }
 
             _state.value = _state.value.copy(
                 loading = false,
@@ -112,7 +108,6 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 deviceId = sync.deviceId,
                 token = sync.token,
                 lastSyncAt = lastSyncAt,
-                lastSyncResult = lastResult,
                 // 読み直した直後は「保存済み」でも「接続確認済み」でもない。
                 savedAt = null,
                 error = null,
@@ -145,17 +140,13 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 最終同期の時刻と結果だけを読み直す（設定の入力内容は触らない）。 */
+    /** 最終同期の時刻だけを読み直す（設定の入力内容は触らない）。 */
     private fun refreshSyncStatus() {
         viewModelScope.launch {
             val at = withContext(Dispatchers.IO) {
                 dao.getState(SyncWorker.KEY_LAST_SYNC_AT)?.toLongOrNull()
             }
-            val result = withContext(Dispatchers.IO) { dao.getState(SyncWorker.KEY_LAST_RESULT) }
-            _state.value = _state.value.copy(
-                lastSyncAt = at,
-                lastSyncResult = result
-            )
+            _state.value = _state.value.copy(lastSyncAt = at)
         }
     }
 

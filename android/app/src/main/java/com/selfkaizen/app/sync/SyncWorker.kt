@@ -85,7 +85,9 @@ class SyncWorker(
         )
 
         if (syncEvents.isEmpty()) {
-            recordState(dao, now, "送信対象なし")
+            // UI が読むのは時刻だけ（内訳は出さない）。
+            dao.putState(CollectionState(KEY_LAST_SYNC_AT, now.toString()))
+            Log.i(TAG, "同期結果: 送信対象なし")
             // 送るものが無くても版は記録する。記録しないと毎回
             // 同じ広い範囲を走査し続けることになる。
             dao.putState(
@@ -117,17 +119,19 @@ class SyncWorker(
             }
         }
 
-        // 状態を記録する（UI から「最終同期」を見られるようにする）。
-        // トークンは含めない。件数と結果のみ。
-        val state = buildString {
+        // 送信の内訳（挿入/重複/バッチ）は**開発者向けの情報**なので
+        // logcat にだけ出す。UI には「いつ同期したか」しか出さない
+        // （利用者にとって意味があるのは成否と時刻だけ）。
+        val summary = buildString {
             append("挿入=").append(inserted)
             append(" 重複=").append(duplicates)
             append(" バッチ=").append(batches.size)
             rejection?.let { append(" 拒否=").append(it.status) }
             if (networkError) append(" 通信失敗")
         }
-        recordState(dao, now, state)
-        Log.i(TAG, "同期結果: $state")
+        // UI が読むのは時刻だけ。
+        dao.putState(CollectionState(KEY_LAST_SYNC_AT, now.toString()))
+        Log.i(TAG, "同期結果: $summary")
 
         return when {
             // 設定かサーバーの問題。再試行しても直らないので失敗させる。
@@ -150,22 +154,11 @@ class SyncWorker(
         }
     }
 
-    private suspend fun recordState(dao: UsageDao, now: Long, summary: String) {
-        // **収集の結果とは別のキーを使う。**
-        // 同じキーに書くと収集と同期が互いの結果を上書きし、
-        // 「最後に何が起きたか」が分からなくなる（エミュレータ検証で確認）。
-        dao.putState(CollectionState(KEY_LAST_RESULT, summary))
-        dao.putState(CollectionState(KEY_LAST_SYNC_AT, now.toString()))
-    }
-
     companion object {
         private const val TAG = "SyncWorker"
 
         const val PERIODIC_WORK_NAME = "sync_periodic"
         const val IMMEDIATE_WORK_NAME = "sync_immediate"
-
-        /** 同期の直近結果（収集の結果とは別キー）。 */
-        const val KEY_LAST_RESULT = "sync_last_result"
 
         /** 前回カーソルから遡る量（後から確定した値を送り直すため）。 */
         private const val OVERLAP_MILLIS = SyncRange.OVERLAP_MILLIS

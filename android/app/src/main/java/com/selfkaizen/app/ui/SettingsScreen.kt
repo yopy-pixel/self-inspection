@@ -379,6 +379,13 @@ private fun ConnectionStatus(state: SettingsUiState) {
     Text(text = text, color = color, fontSize = 11.5.sp, fontWeight = FontWeight.Medium)
 }
 
+/**
+ * 最終同期の1行。
+ *
+ * **件数（挿入/重複/バッチ）は出さない。** 利用者にとって意味のある情報は
+ * 「いつ・成功したか」だけであり、送信の内訳は内部の実装詳細
+ * （logcat の `SyncWorker` にだけ出す）。
+ */
 @Composable
 private fun LastSyncLine(state: SettingsUiState) {
     val c = LocalKaizenColors.current
@@ -389,12 +396,7 @@ private fun LastSyncLine(state: SettingsUiState) {
         stringResource(R.string.settings_last_sync, DurationFormat.timestamp(it, zone))
     } ?: stringResource(R.string.settings_never_synced)
 
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(text = text, color = c.ink2, fontSize = 11.sp)
-        state.lastSyncResult?.let {
-            Text(text = it, color = c.ink3, fontSize = 10.5.sp)
-        }
-    }
+    Text(text = text, color = c.ink2, fontSize = 11.sp)
 }
 
 // ---- 入力変換 ----
