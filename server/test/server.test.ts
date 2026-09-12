@@ -207,6 +207,41 @@ describe("集計の再計算", () => {
     assert.equal(byPkg["com.b"], 3000);
   });
 
+  test("表示名はパッケージ名に負けない（MAX の辞書順を使わない）", async () => {
+    // **実際に起きた事故。** 同じアプリの行に古いパッケージ名が1つでも残ると、
+    // MAX(app_label) は辞書順で大きい方を選ぶため
+    // "com.example.app" > "Example" となって表示名が消えていた
+    // （小文字始まりのパッケージ名は、大文字始まりの表示名より大きい）。
+    const db = freshDb();
+    await seedDevice(db, DEVICE, await hashToken(TOKEN));
+
+    await ingestBatch(
+      db,
+      DEVICE,
+      "b1",
+      [
+        { ...ev("2026-09-14", "com.example.app", 1000, 2000), appLabel: "Example" },
+        { ...ev("2026-09-14", "com.example.app", 3000, 5000), appLabel: "com.example.app" },
+      ],
+      Date.now()
+    );
+
+    const rows = await queryDailySummary(db, "2026-09-14", "2026-09-14");
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].appLabel, "Example");
+  });
+
+  test("表示名が1つも無ければパッケージ名を返す", async () => {
+    // 端末が解決できなかった場合。パッケージ名を出すのは正しいフォールバック。
+    const db = freshDb();
+    await seedDevice(db, DEVICE, await hashToken(TOKEN));
+
+    await ingestBatch(db, DEVICE, "b1", [ev("2026-09-14", "com.a", 1000, 2000)], Date.now());
+
+    const rows = await queryDailySummary(db, "2026-09-14", "2026-09-14");
+    assert.equal(rows[0].appLabel, "com.a");
+  });
+
   test("日ごとに分かれる", async () => {
     const db = freshDb();
     await seedDevice(db, DEVICE, await hashToken(TOKEN));

@@ -49,24 +49,18 @@
       （エミュレータで `com.google.android.apps.nexuslauncher` と出た）。
       そしてランチャーは使用時間の上位に来やすい。
 
+      カテゴリを指定せず `MAIN` だけを宣言すると、`MAIN` を持つ
+      すべてのアプリに一致する（起動用カテゴリを個別に並べる必要が無い）。
+      使用状況には**起動できないシステム部品**
+      （`com.android.intentresolver` など）も現れるため、
+      カテゴリを絞るより `MAIN` だけで広く取る方が表示名が揃う。
+
       なお `PACKAGE_USAGE_STATS` を許可しても可視性は広がらない
       （実測で確認済み。混同しやすいので注意）。
     -->
     <queries>
-        <!-- 通常のアプリ -->
         <intent>
             <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
-        <!-- ホームアプリ（ランチャー）。これが無いとランチャーが名前にならない -->
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.HOME" />
-        </intent>
-        <!-- TV 向け（端末によっては該当する） -->
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
         </intent>
     </queries>
 

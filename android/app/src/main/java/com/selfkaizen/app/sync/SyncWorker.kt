@@ -51,15 +51,26 @@ class SyncWorker(
 
         // 前回のカーソルから取得する。少し重ねるのは、後から確定した
         // endTime を送り直すため（サーバー側は UPSERT で更新する）。
+        //
+        // **送信形式の版が上がったときは、カーソルを無視して送り直す。**
+        // 記録済みの行の意味が変わった場合、送り直さないと
+        // サーバー側の古い値が永久に残る（[SyncRange] 参照）。
         val cursor = dao.getState(KEY_CURSOR)?.toLongOrNull()
-        val from = cursor?.minus(OVERLAP_MILLIS) ?: (now - FIRST_SYNC_WINDOW_MILLIS)
+        val storedVersion = dao.getState(KEY_PAYLOAD_VERSION)?.toIntOrNull()
+        val from = SyncRange.startFrom(cursor, storedVersion, now)
+
+        // **表示名はここで解決する。**
+        // `app_usage_event.app_label` はパッケージ名を持つ（言語設定で
+        // 変わらない安定した識別子）。サーバーには `PackageManager` が
+        // 無いので、送る時点で表示名に直す。
+        val labels = AppLabelResolver(applicationContext)
 
         val events = dao.eventsBetween(from, now)
         val syncEvents = BatchBuilder.splitByLocalDate(
             events.map {
                 BatchBuilder.SourceInterval(
                     packageName = it.packageName,
-                    appLabel = it.appLabel,
+                    appLabel = labels.label(it.packageName),
                     startTime = it.startTime,
                     endTime = it.endTime,
                     closeReason = it.closeReason,
@@ -75,6 +86,11 @@ class SyncWorker(
 
         if (syncEvents.isEmpty()) {
             recordState(dao, now, "送信対象なし")
+            // 送るものが無くても版は記録する。記録しないと毎回
+            // 同じ広い範囲を走査し続けることになる。
+            dao.putState(
+                CollectionState(KEY_PAYLOAD_VERSION, SyncRange.versionAfterSuccess().toString())
+            )
             return Result.success()
         }
 
@@ -124,6 +140,11 @@ class SyncWorker(
                 // 全バッチ成功。カーソルを進める。
                 val newest = syncEvents.maxOf { it.startTime }
                 dao.putState(CollectionState(KEY_CURSOR, newest.toString()))
+                // **成功したときだけ版を記録する。** 失敗時に記録すると、
+                // 送り直しが二度と起こらず古い値が残る。
+                dao.putState(
+                    CollectionState(KEY_PAYLOAD_VERSION, SyncRange.versionAfterSuccess().toString())
+                )
                 Result.success()
             }
         }
@@ -147,13 +168,21 @@ class SyncWorker(
         const val KEY_LAST_RESULT = "sync_last_result"
 
         /** 前回カーソルから遡る量（後から確定した値を送り直すため）。 */
-        private const val OVERLAP_MILLIS = 24 * 60 * 60 * 1000L
+        private const val OVERLAP_MILLIS = SyncRange.OVERLAP_MILLIS
 
         /** 初回同期で遡る量。 */
-        private const val FIRST_SYNC_WINDOW_MILLIS = 7 * 24 * 60 * 60 * 1000L
+        private const val FIRST_SYNC_WINDOW_MILLIS = SyncRange.FIRST_SYNC_WINDOW_MILLIS
 
         /** 同期カーソル（前回送信した最新の startTime）。 */
         const val KEY_CURSOR = "sync_cursor"
+
+        /**
+         * 前回送信したときの送信形式の版。
+         *
+         * 送る中身の意味を変えたときに、送り直しを1回だけ起こすために持つ。
+         * 未記録（初版以前）は 0 として扱う。
+         */
+        const val KEY_PAYLOAD_VERSION = "sync_payload_version"
 
         /** 最終同期時刻。UI 表示用。 */
         const val KEY_LAST_SYNC_AT = "sync_last_at"

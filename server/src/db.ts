@@ -32,6 +32,25 @@ export interface DeviceRow {
 }
 
 /**
+ * 表示名を選ぶ SQL 式。
+ *
+ * **`MAX(app_label)` だけでは不十分。** `MAX` は辞書順で最大の文字列を選ぶため、
+ * 同じアプリの行に古いパッケージ名が1つでも残っていると
+ * （小文字始まりのパッケージ名は、大文字始まりの表示名より大きい）、
+ * **その日の表示がまるごとパッケージ名に負ける。**
+ * 実際にこれで「表示名に直したのに直らない」が起きた。
+ *
+ * 「パッケージ名と違う値」＝端末が解決できた表示名なので、それを優先する。
+ * 1つも無ければ解決できていないので、パッケージ名を返す（正直なフォールバック）。
+ *
+ * 参照するクエリは `package_name` 列が見えている必要がある。
+ */
+const LABEL_EXPR = `COALESCE(
+                  MAX(CASE WHEN app_label <> package_name THEN app_label END),
+                  MAX(app_label)
+                )`;
+
+/**
  * バッチを取り込む。**冪等**。
  *
  * 同じ `batchId` を再送しても二重計上しない:
@@ -122,7 +141,10 @@ export async function ingestBatch(
         `INSERT INTO daily_summary
            (device_id, local_date, package_name, app_label, total_millis, segment_count)
          SELECT device_id, local_date, package_name,
-                MAX(app_label),
+                COALESCE(
+                  MAX(CASE WHEN app_label <> package_name THEN app_label END),
+                  MAX(app_label)
+                ),
                 SUM(end_time - start_time),
                 COUNT(*)
          FROM usage_event
@@ -156,7 +178,10 @@ export async function querySummary(
   const apps = await db
     .prepare(
       `SELECT package_name AS packageName,
-              MAX(app_label) AS appLabel,
+              COALESCE(
+                  MAX(CASE WHEN app_label <> package_name THEN app_label END),
+                  MAX(app_label)
+                ) AS appLabel,
               SUM(total_millis) AS totalMillis
        FROM daily_summary
        WHERE local_date >= ? AND local_date <= ?
@@ -223,7 +248,10 @@ export async function queryDay(db: Database, date: string): Promise<DayResponse>
   const apps = await db
     .prepare(
       `SELECT package_name AS packageName,
-              MAX(app_label) AS appLabel,
+              COALESCE(
+                  MAX(CASE WHEN app_label <> package_name THEN app_label END),
+                  MAX(app_label)
+                ) AS appLabel,
               SUM(total_millis) AS totalMillis,
               SUM(segment_count) AS segmentCount
        FROM daily_summary

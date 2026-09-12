@@ -203,6 +203,81 @@ class BatchBuilderTest {
         assertThat(id).matches("[0-9a-f]{32}")
     }
 
+    // ---------------- batchId は「内容の変化」を捉える ----------------
+    //
+    // サーバーは同じ batchId のバッチを**丸ごと読み飛ばす**。
+    // したがって、内容を変えて送り直したいときは ID も変わる必要がある。
+    // ここが抜けると「直したのに反映されない」という形で表に出る
+    // （実際に appLabel で起きた）。
+
+    /** 1件だけのバッチを作る。 */
+    private fun single(pkg: String = "com.a") = BatchBuilder.splitByLocalDate(
+        listOf(src(pkg, at("2026-09-14", 10), at("2026-09-14", 11))),
+        zone
+    )
+
+    @Test
+    fun `表示名が変われば batchId も変わる`() {
+        // **これが今回の修正の本体。**
+        // 変わらないと、表示名を直して送り直してもサーバーが読み飛ばし、
+        // パッケージ名のまま永久に残る。
+        val before = single().map { it.copy(appLabel = "com.brave.browser") }
+        val after = single().map { it.copy(appLabel = "Brave") }
+
+        assertThat(BatchBuilder.batchIdFor("d", before))
+            .isNotEqualTo(BatchBuilder.batchIdFor("d", after))
+    }
+
+    @Test
+    fun `終了時刻が変われば batchId も変わる`() {
+        // endTime は後から確定する（未クローズ区間が閉じる）。
+        val before = single()
+        val after = before.map { it.copy(endTime = it.endTime + 60_000L) }
+
+        assertThat(BatchBuilder.batchIdFor("d", before))
+            .isNotEqualTo(BatchBuilder.batchIdFor("d", after))
+    }
+
+    @Test
+    fun `閉じ方が変われば batchId も変わる`() {
+        val before = single()
+        val after = before.map { it.copy(closeReason = "STALE_SWEEP") }
+
+        assertThat(BatchBuilder.batchIdFor("d", before))
+            .isNotEqualTo(BatchBuilder.batchIdFor("d", after))
+    }
+
+    @Test
+    fun `日付が変われば batchId も変わる`() {
+        val before = single()
+        val after = before.map { it.copy(localDate = "2026-09-15") }
+
+        assertThat(BatchBuilder.batchIdFor("d", before))
+            .isNotEqualTo(BatchBuilder.batchIdFor("d", after))
+    }
+
+    @Test
+    fun `区切り文字が値に含まれても衝突しない`() {
+        // ":" などの区切りだと、項目の切れ目がずれた別内容が
+        // 同じ文字列に潰れてしまう。NUL 区切りにしている理由。
+        val a = single().map { it.copy(closeReason = "a", appLabel = "b:c") }
+        val b = single().map { it.copy(closeReason = "a:b", appLabel = "c") }
+
+        assertThat(BatchBuilder.batchIdFor("d", a))
+            .isNotEqualTo(BatchBuilder.batchIdFor("d", b))
+    }
+
+    @Test
+    fun `表示名が同じなら batchId は変わらない`() {
+        // 内容を捉えつつ、無関係な再送で ID が変わってはならない
+        // （変わると毎回すべてのバッチが「新規」になり無駄に取り込まれる）。
+        val a = single().map { it.copy(appLabel = "Brave") }
+        val b = single().map { it.copy(appLabel = "Brave") }
+
+        assertThat(BatchBuilder.batchIdFor("d", a))
+            .isEqualTo(BatchBuilder.batchIdFor("d", b))
+    }
+
     // ---------------- バッチ分割 ----------------
 
     @Test

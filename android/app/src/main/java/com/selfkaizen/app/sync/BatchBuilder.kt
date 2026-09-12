@@ -27,6 +27,15 @@ object BatchBuilder {
      */
     const val MAX_EVENTS_PER_BATCH_CONSERVATIVE = 500
 
+    /**
+     * `batchId` を組み立てるときの項目区切り。
+     *
+     * NUL を使うのは、**表示名にどんな記号が入っても衝突しない**ため。
+     * `:` や `|` にすると、表示名にその文字が含まれたときに
+     * 別々の内容が同じ文字列に潰れてしまう。
+     */
+    private const val SEPARATOR = "\u0000"
+
     /** 送信対象にする入力区間。Room の `AppUsageEvent` から詰め替える。 */
     data class SourceInterval(
         val packageName: String,
@@ -114,14 +123,38 @@ object BatchBuilder {
      * サーバー側の冪等性チェック（`ingest_batch` の PK）をすり抜けて
      * 二重計上する。同じ内容なら必ず同じ ID になる必要がある。
      *
-     * 順序に依存しないよう、区間の識別子をソートしてから混ぜる。
+     * **逆に、内容が変わったら ID も変わらなければならない。**
+     * サーバーは同じ `batchId` のバッチを**丸ごと読み飛ばす**ため
+     * （`server/src/db.ts` の `ingestBatch`）、ID に含め忘れた項目を
+     * 変えて再送しても、サーバーには一切反映されない。
+     *
+     * 実際にこれで事故が起きた: `appLabel` が ID に含まれていなかったため、
+     * パッケージ名から表示名に変えて送り直しても
+     * **サーバーの表示がパッケージ名のまま直らなかった**。
+     *
+     * 以前は `packageName@startTime`（サーバー側の一意キーと同じ）だけを
+     * 含めていた。しかし `endTime` / `closeReason` は後から確定する値であり、
+     * `appLabel` も変わりうる。**キーだけでは「同じバッチ」を表せない。**
+     *
+     * 順序に依存しないよう、区間の表現をソートしてから混ぜる。
      */
     fun batchIdFor(deviceId: String, events: List<SyncEvent>): String {
         val md = MessageDigest.getInstance("SHA-256")
         md.update(deviceId.toByteArray(Charsets.UTF_8))
 
         events
-            .map { "${it.packageName}@${it.startTime}" }
+            .map { event ->
+                // 内容を構成する項目を**すべて**並べる。
+                // 区切りは NUL（表示名にどんな記号が入っても衝突しない）。
+                listOf(
+                    event.localDate,
+                    event.packageName,
+                    event.startTime.toString(),
+                    event.endTime.toString(),
+                    event.closeReason ?: "",
+                    event.appLabel
+                ).joinToString(SEPARATOR)
+            }
             .sorted()
             .forEach {
                 md.update(0) // 区切り（連結による衝突を避ける）
