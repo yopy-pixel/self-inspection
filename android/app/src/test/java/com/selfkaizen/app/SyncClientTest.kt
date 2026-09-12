@@ -1,6 +1,7 @@
 package com.selfkaizen.app
 
 import com.google.common.truth.Truth.assertThat
+import com.selfkaizen.app.sync.ClaimResult
 import com.selfkaizen.app.sync.ConnectionCheck
 import com.selfkaizen.app.sync.HttpResult
 import com.selfkaizen.app.sync.HttpTransport
@@ -310,6 +311,76 @@ class SyncClientTest {
         val r = SyncClient(t).pairBrowser(settings(endpoint = "http://example.com"))
 
         assertThat(r).isInstanceOf(PairCodeResult.Failed::class.java)
+        assertThat(t.callCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `端末用のコードは for device を送る`() {
+        // 用途を分けないと、閲覧用に配ったコードで書き込み権限が増えてしまう。
+        val t = RecordingTransport(
+            response = HttpResult(200, """{"code":"ABC12345","kind":"device","expiresInSeconds":180}""")
+        )
+        SyncClient(t).pairDevice(settings())
+
+        assertThat(t.lastUrl).endsWith("/api/v1/pair")
+        assertThat(t.lastBody).contains("\"for\":\"device\"")
+    }
+
+    // ---------------- この端末をコードで登録する ----------------
+
+    @Test
+    fun `コードで端末を登録できる`() {
+        val t = RecordingTransport(
+            response = HttpResult(201, """{"deviceId":"dev-2","token":"tok-2","label":"phone"}""")
+        )
+        val r = SyncClient(t).claimDevice("https://example.workers.dev", "ABC12345", "phone")
+
+        assertThat(r).isEqualTo(ClaimResult.Ok("dev-2", "tok-2"))
+        assertThat(t.lastUrl).endsWith("/api/v1/devices/claim")
+        assertThat(t.lastBody).contains("ABC12345")
+    }
+
+    @Test
+    fun `端末登録は認証ヘッダを付けない`() {
+        // まだトークンを持っていない端末が叩く経路。空の Bearer を送らない。
+        val t = RecordingTransport(
+            response = HttpResult(201, """{"deviceId":"d","token":"t"}""")
+        )
+        SyncClient(t).claimDevice("https://example.workers.dev", "ABC12345", "phone")
+
+        assertThat(t.lastToken).isEmpty()
+    }
+
+    @Test
+    fun `拒否されたコードは Rejected になる`() {
+        val t = RecordingTransport(response = HttpResult(401, """{"error":"code rejected"}"""))
+        val r = SyncClient(t).claimDevice("https://example.workers.dev", "BADCODE1", "phone")
+
+        assertThat(r).isEqualTo(ClaimResult.Rejected(401))
+    }
+
+    @Test
+    fun `応答が壊れていたら端末登録は失敗にする`() {
+        val t = RecordingTransport(response = HttpResult(201, """{"deviceId":"d"}"""))
+        assertThat(SyncClient(t).claimDevice("https://example.workers.dev", "ABC12345", "phone"))
+            .isInstanceOf(ClaimResult.Failed::class.java)
+    }
+
+    @Test
+    fun `平文HTTPへは端末登録を送らない`() {
+        val t = RecordingTransport()
+        val r = SyncClient(t).claimDevice("http://example.com", "ABC12345", "phone")
+
+        assertThat(r).isInstanceOf(ClaimResult.Failed::class.java)
+        assertThat(t.callCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `コードが空なら端末登録は通信しない`() {
+        val t = RecordingTransport()
+        val r = SyncClient(t).claimDevice("https://example.workers.dev", "  ", "phone")
+
+        assertThat(r).isInstanceOf(ClaimResult.Failed::class.java)
         assertThat(t.callCount).isEqualTo(0)
     }
 

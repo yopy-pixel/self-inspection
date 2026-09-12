@@ -141,15 +141,30 @@ class SyncClient(
     }
 
     /**
-     * ペアコードを発行する。
+     * 新しいブラウザ用のペアコードを発行する。
      *
      * 新しいブラウザ（PC・別のスマホ）をログインさせるための短命・単回使用の
      * コード。**端末トークンを手入力させない**ための仕組みで、トークンそのものは
      * 画面にも URL にも出さない。
-     *
-     * 発行できるのは認証済みの端末だけ（サーバー側で端末トークンを検証する）。
      */
-    fun pairBrowser(settings: SyncSettings): PairCodeResult {
+    fun pairBrowser(settings: SyncSettings): PairCodeResult =
+        requestPairCode(settings, forDevice = false)
+
+    /**
+     * 新しい**端末**用のペアコードを発行する。
+     *
+     * 別のスマホ（将来は PC エージェント）を追加するときに使う。
+     * これがあると、端末を1台増やすのに管理トークンを取り出して
+     * `curl` を叩く必要が無くなる。
+     *
+     * **ブラウザ用と用途を分けている。** 端末コードは書き込み権限
+     * （端末トークン）を配るので、閲覧用のコードより影響が強い。
+     * サーバー側でも用途を照合するので取り違えは通らない。
+     */
+    fun pairDevice(settings: SyncSettings): PairCodeResult =
+        requestPairCode(settings, forDevice = true)
+
+    private fun requestPairCode(settings: SyncSettings, forDevice: Boolean): PairCodeResult {
         if (!isAllowedEndpoint(settings.endpoint)) {
             return PairCodeResult.Failed("endpoint must be https://")
         }
@@ -161,7 +176,7 @@ class SyncClient(
             transport.postJson(
                 url = settings.endpoint.trimEnd('/') + PAIR_PATH,
                 bearerToken = settings.token,
-                jsonBody = "{}"
+                jsonBody = if (forDevice) """{"for":"device"}""" else "{}"
             )
         } catch (e: IOException) {
             return PairCodeResult.Failed(e.message ?: "network error")
@@ -184,10 +199,52 @@ class SyncClient(
         }
     }
 
+    /**
+     * この端末自身をペアコードで登録する。
+     *
+     * **認証は不要**（コード自体が資格情報）。新しい端末の設定画面から呼ぶ。
+     * 成功すると `deviceId` とトークンが返るので、保存して同期を有効にする。
+     */
+    fun claimDevice(endpoint: String, code: String, label: String): ClaimResult {
+        if (!isAllowedEndpoint(endpoint)) {
+            return ClaimResult.Failed("endpoint must be https://")
+        }
+        if (code.isBlank()) return ClaimResult.Failed("code is empty")
+
+        val body = JSONObject()
+            .put("code", code)
+            .put("label", label)
+            .toString()
+
+        val response = try {
+            // 認証ヘッダは付けない（付けるトークンがまだ無い）。
+            transport.postJson(endpoint.trimEnd('/') + CLAIM_PATH, "", body)
+        } catch (e: IOException) {
+            return ClaimResult.Failed(e.message ?: "network error")
+        }
+
+        return when (response.status) {
+            201 -> {
+                val json = runCatching { JSONObject(response.body) }.getOrNull()
+                val deviceId = json?.optString("deviceId").orEmpty()
+                val token = json?.optString("token").orEmpty()
+                if (deviceId.isBlank() || token.isBlank()) {
+                    ClaimResult.Failed("unexpected response")
+                } else {
+                    ClaimResult.Ok(deviceId, token)
+                }
+            }
+            401, 403 -> ClaimResult.Rejected(response.status)
+            400 -> ClaimResult.Failed("code is required")
+            else -> ClaimResult.Failed("HTTP ${response.status}")
+        }
+    }
+
     companion object {
         const val INGEST_PATH = "/api/v1/ingest"
         const val SUMMARY_PATH = "/api/v1/summary"
         const val PAIR_PATH = "/api/v1/pair"
+        const val CLAIM_PATH = "/api/v1/devices/claim"
 
         /** サーバー側の `SCHEMA_VERSION` と一致させること。 */
         const val SCHEMA_VERSION = 1
@@ -214,6 +271,17 @@ sealed interface PairCodeResult {
     data class Unauthorized(val status: Int) : PairCodeResult
 
     data class Failed(val message: String) : PairCodeResult
+}
+
+/** 端末登録（claim）の結果。 */
+sealed interface ClaimResult {
+    /** 登録できた。この値を保存すれば同期できる。 */
+    data class Ok(val deviceId: String, val token: String) : ClaimResult
+
+    /** コードが拒否された（期限切れ・使用済み・用途違い・でたらめ）。 */
+    data class Rejected(val status: Int) : ClaimResult
+
+    data class Failed(val message: String) : ClaimResult
 }
 
 /** HTTP 応答。 */
@@ -259,7 +327,10 @@ class UrlConnectionTransport(
             readTimeout = readTimeoutMillis
             setRequestProperty("Accept", "application/json")
             // トークンはヘッダに載せる（URL に含めない。ログに残るため）。
-            setRequestProperty("Authorization", "Bearer $bearerToken")
+            // **空のときは付けない**（端末登録は未認証で叩くため）。
+            if (bearerToken.isNotEmpty()) {
+                setRequestProperty("Authorization", "Bearer $bearerToken")
+            }
             if (method == "POST") setRequestProperty("Content-Type", "application/json; charset=utf-8")
         }
 

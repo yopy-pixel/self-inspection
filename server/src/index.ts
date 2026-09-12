@@ -27,6 +27,7 @@ import {
   revokeSession,
   sessionLabelFromUA,
   touchSession,
+  type PairKind,
 } from "./session.ts";
 
 /**
@@ -38,6 +39,7 @@ import {
  *   POST /dashboard            … ログイン・失効・ペアコード発行
  *   GET  /day                  … 日別の内訳（ブラウザセッション）
  *   POST /api/v1/devices       … 端末登録（管理者トークンが必要）
+ *   POST /api/v1/devices/claim … 端末登録（ペアコード。未認証でよい）
  *   POST /api/v1/pair          … ペアコード発行（端末トークン or セッション）
  *   POST /api/v1/ingest        … 取り込み（端末トークン）
  *   GET  /api/v1/summary       … 集計（端末トークン）
@@ -114,6 +116,11 @@ export async function handle(
     // ペアコードの発行。**認証済みの主体だけ**が発行できる。
     if (request.method === "POST" && path === "/api/v1/pair") {
       return await handlePair(request, env, now);
+    }
+
+    // 新しい端末が自分自身を登録する（コードが資格情報）。
+    if (request.method === "POST" && path === "/api/v1/devices/claim") {
+      return await handleClaimDevice(request, env, now);
     }
 
     if (request.method === "POST" && path === "/api/v1/ingest") {
@@ -442,7 +449,7 @@ async function handleRegisterDevice(
 // ---------------------------------------------------------------------------
 
 /**
- * 新しいブラウザ用のペアコードを発行する。
+ * ペアコードを発行する。
  *
  * **認証済みの主体だけ**が発行できる:
  *  - 端末トークン（アプリ）… `Authorization: Bearer <token>`
@@ -450,6 +457,9 @@ async function handleRegisterDevice(
  *
  * 未認証で発行できると、ログイン画面を開いた誰もがログインできてしまい、
  * 認証が丸ごと無意味になる。
+ *
+ * body の `{"for":"device"}` で**端末登録用**のコードになる（既定はブラウザ用）。
+ * 用途は引き換え時に照合するので、取り違えは通らない。
  */
 async function handlePair(request: Request, env: AppEnv, now: number): Promise<Response> {
   let deviceId: string | null = null;
@@ -466,12 +476,70 @@ async function handlePair(request: Request, env: AppEnv, now: number): Promise<R
     sessionId = auth.sessionId;
   }
 
-  const { code, expiresAt } = await mintPairCode(env.DB, { deviceId, sessionId }, now);
+  let kind: PairKind = "browser";
+  try {
+    const body = (await request.json()) as { for?: unknown };
+    if (body?.for === "device") kind = "device";
+  } catch {
+    // body 無しはブラウザ用（既定）。
+  }
+
+  const { code, expiresAt } = await mintPairCode(env.DB, { deviceId, sessionId }, now, kind);
   return json({
     code,
+    kind,
     expiresAt,
     expiresInSeconds: Math.max(0, Math.floor((expiresAt - now) / 1000)),
   });
+}
+
+// ---------------------------------------------------------------------------
+// 端末をペアコードで登録する
+// ---------------------------------------------------------------------------
+
+/**
+ * 新しい端末が自分自身を登録する。
+ *
+ * **未認証でよい。** コード自体が資格情報で、3分・1回限り。
+ * 発行には認証が要るので、勝手に端末を増やすことはできない。
+ *
+ * これがあると、端末を1台増やすのに `ADMIN_TOKEN` を取り出して
+ * `curl` を叩く必要がなくなる。管理トークンは
+ * 「全部の端末とセッションを失ったとき」の最後の手段として残す。
+ */
+async function handleClaimDevice(
+  request: Request,
+  env: AppEnv,
+  now: number
+): Promise<Response> {
+  let body: { code?: unknown; label?: unknown };
+  try {
+    body = (await request.json()) as { code?: unknown; label?: unknown };
+  } catch {
+    return json({ error: "invalid JSON" } satisfies ErrorResponse, 400);
+  }
+
+  const rawCode = typeof body.code === "string" ? body.code : "";
+  if (normalizePairCode(rawCode).length === 0) {
+    return json({ error: "code is required" } satisfies ErrorResponse, 400);
+  }
+
+  // **先に引き換える。** 使用済みにするのはコード側の責務で、
+  // 同時アクセスでも二重に端末が増えない。
+  const redeemed = await redeemPairCode(env.DB, rawCode, now, "device");
+  if (!redeemed.ok) {
+    // 理由は返さない（総当たりの手がかりを与えない）。
+    return json({ error: "code rejected" } satisfies ErrorResponse, 401);
+  }
+
+  let label = "device";
+  if (typeof body.label === "string" && body.label.length > 0) {
+    label = body.label.slice(0, 64);
+  }
+
+  const { deviceId, token } = await registerDevice(env.DB, label, now);
+  // トークンはここでしか返さない（保存はハッシュのみ）。
+  return json({ deviceId, token, label }, 201);
 }
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.selfkaizen.app.data.DatabaseProvider
 import com.selfkaizen.app.data.SettingsRepository
 import com.selfkaizen.app.rules.RuleSettings
+import com.selfkaizen.app.sync.ClaimResult
 import com.selfkaizen.app.sync.ConnectionCheck
 import com.selfkaizen.app.sync.PairCodeResult
 import com.selfkaizen.app.sync.SyncClient
@@ -42,10 +43,23 @@ sealed interface ConnectionTestState {
 data class PairCode(
     val code: String,
     val ttlMillis: Long,
-    val receivedAt: Long
+    val receivedAt: Long,
+    /** 端末登録用か（ブラウザ用か）。表示の説明を変えるためだけに持つ。 */
+    val forDevice: Boolean
 ) {
     /** いま表示すべき残り時間（ミリ秒）。 */
     fun remainingMillis(now: Long): Long = ttlMillis - (now - receivedAt)
+}
+
+/** 新しい端末をコードで登録する流れの状態。 */
+sealed interface ClaimState {
+    data object Idle : ClaimState
+    data object Working : ClaimState
+
+    /** 登録できた。Device ID と Token は埋まっている。 */
+    data object Done : ClaimState
+
+    data class Failed(val message: String) : ClaimState
 }
 
 /** 設定画面の状態。 */
@@ -68,7 +82,11 @@ data class SettingsUiState(
     /** 発行済みのペアコード（未発行なら null）。 */
     val pairCode: PairCode? = null,
     /** ペアコード発行の失敗理由。 */
-    val pairError: String? = null
+    val pairError: String? = null,
+    /** 新しい端末をコードで登録するときの入力。 */
+    val claimCode: String = "",
+    /** 端末登録の進捗。 */
+    val claimState: ClaimState = ClaimState.Idle
 ) {
     val isConfigured: Boolean
         get() = syncEnabled && endpoint.isNotBlank() && deviceId.isNotBlank() && token.isNotBlank()
@@ -366,7 +384,17 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
      * 端末トークンは**画面に出さない**。出すのは短命・単回使用のコードだけ。
      * これで「PC を増やすたびに 64 文字を手入力する」必要が無くなる。
      */
-    fun pairBrowser() {
+    fun pairBrowser() = requestPairCode(forDevice = false)
+
+    /**
+     * 新しい**端末**用のペアコードを発行する。
+     *
+     * 別のスマホを増やすときに使う。これがあると、端末を1台足すのに
+     * 管理トークンを取り出して `curl` を叩く必要が無くなる。
+     */
+    fun pairDevice() = requestPairCode(forDevice = true)
+
+    private fun requestPairCode(forDevice: Boolean) {
         val s = _state.value
         if (!s.isConfigured) {
             _state.value = s.copy(
@@ -384,14 +412,18 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 token = s.token
             )
             val receivedAt = System.currentTimeMillis()
-            val result = withContext(Dispatchers.IO) { SyncClient().pairBrowser(settings) }
+            val client = SyncClient()
+            val result = withContext(Dispatchers.IO) {
+                if (forDevice) client.pairDevice(settings) else client.pairBrowser(settings)
+            }
 
             _state.value = when (result) {
                 is PairCodeResult.Ok -> _state.value.copy(
                     pairCode = PairCode(
                         code = result.code,
                         ttlMillis = result.expiresInSeconds * 1000L,
-                        receivedAt = receivedAt
+                        receivedAt = receivedAt,
+                        forDevice = forDevice
                     ),
                     pairError = null
                 )
@@ -410,6 +442,66 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     /** 発行済みのコードを消す（表示を閉じる）。 */
     fun clearPairCode() {
         _state.value = _state.value.copy(pairCode = null, pairError = null)
+    }
+
+    // ---- この端末をコードで登録する ----
+
+    fun setClaimCode(value: String) {
+        // コードは英数字のみ。空白やハイフンは無視する（打ち間違いを減らす）。
+        val cleaned = value.uppercase().filter { it.isLetterOrDigit() }.take(12)
+        _state.value = markDirty().copy(claimCode = cleaned, claimState = ClaimState.Idle)
+    }
+
+    /**
+     * この端末自身をペアコードで登録する。
+     *
+     * **新しく端末を足すときの入口。** 既存の端末（またはブラウザ）が発行した
+     * コードを入れると、`deviceId` とトークンを受け取って保存する。
+     * これで管理トークンも `curl` も要らなくなる。
+     */
+    fun claimThisDevice() {
+        val s = _state.value
+        if (s.endpoint.isBlank()) {
+            _state.value = s.copy(claimState = ClaimState.Failed("endpoint is required"))
+            return
+        }
+        if (s.claimCode.isBlank()) {
+            _state.value = s.copy(claimState = ClaimState.Failed("code is required"))
+            return
+        }
+
+        _state.value = s.copy(claimState = ClaimState.Working)
+
+        viewModelScope.launch {
+            // 端末の表示名。サーバーの端末一覧で見分けられるようにする。
+            val label = android.os.Build.MODEL?.takeIf { it.isNotBlank() } ?: "device"
+
+            val result = withContext(Dispatchers.IO) {
+                SyncClient().claimDevice(s.endpoint, s.claimCode, label)
+            }
+
+            when (result) {
+                is ClaimResult.Ok -> {
+                    _state.value = _state.value.copy(
+                        deviceId = result.deviceId,
+                        token = result.token,
+                        // 登録できたなら、そのまま同期を有効にする。
+                        syncEnabled = true,
+                        claimCode = "",
+                        claimState = ClaimState.Done
+                    )
+                    // **必ず保存する。** 登録できたのに端末に残っていない、
+                    // という状態を作らない。
+                    persist()
+                }
+                is ClaimResult.Rejected -> _state.value = _state.value.copy(
+                    claimState = ClaimState.Failed("code rejected (${result.status})")
+                )
+                is ClaimResult.Failed -> _state.value = _state.value.copy(
+                    claimState = ClaimState.Failed(result.message)
+                )
+            }
+        }
     }
 
     companion object {

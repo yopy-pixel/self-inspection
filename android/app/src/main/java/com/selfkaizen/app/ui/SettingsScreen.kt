@@ -67,7 +67,10 @@ fun SettingsScreen(
     onTestConnection: () -> Unit,
     onSyncNow: () -> Unit,
     onPairBrowser: () -> Unit,
+    onPairDevice: () -> Unit,
     onClearPairCode: () -> Unit,
+    onClaimCode: (String) -> Unit,
+    onClaimDevice: () -> Unit,
     onSave: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier
@@ -226,7 +229,7 @@ fun SettingsScreen(
                 ConnectionStatus(state)
                 LastSyncLine(state)
 
-                // ---- ブラウザのペアリング ----
+                // ---- ブラウザ / 端末の追加 ----
                 //
                 // 端末トークンを手入力させないための導線。複数の PC・スマホを
                 // 前提にしているので、**何台でも**ここから追加できる。
@@ -236,21 +239,83 @@ fun SettingsScreen(
                     fontSize = 11.sp
                 )
                 if (state.pairCode == null) {
-                    Button(
-                        onClick = onPairBrowser,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = c.surface,
-                            contentColor = c.ink
-                        ),
-                        modifier = Modifier.border(1.dp, c.line, RoundedCornerShape(4.dp))
-                    ) {
-                        Text(stringResource(R.string.settings_pair), fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = onPairBrowser,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = c.surface,
+                                contentColor = c.ink
+                            ),
+                            modifier = Modifier.border(1.dp, c.line, RoundedCornerShape(4.dp))
+                        ) {
+                            Text(stringResource(R.string.settings_pair), fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = onPairDevice,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = c.surface,
+                                contentColor = c.ink
+                            ),
+                            modifier = Modifier.border(1.dp, c.line, RoundedCornerShape(4.dp))
+                        ) {
+                            Text(stringResource(R.string.settings_pair_device), fontSize = 12.sp)
+                        }
                     }
                 } else {
                     PairCodeBlock(pair = state.pairCode, onDismiss = onClearPairCode)
                 }
                 state.pairError?.let {
                     Text(text = it, color = c.danger, fontSize = 11.sp)
+                }
+
+                // ---- この端末をコードで登録する ----
+                //
+                // 新しい端末の初回セットアップ。既存の端末かブラウザが発行した
+                // コードを入れると、Device ID と Token が埋まる。
+                Text(
+                    text = stringResource(R.string.settings_claim_hint),
+                    color = c.ink3,
+                    fontSize = 11.sp
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TextField(
+                        label = stringResource(R.string.settings_claim_code),
+                        value = state.claimCode,
+                        onValueChange = onClaimCode,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = onClaimDevice,
+                        enabled = state.claimState != ClaimState.Working,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = c.surface,
+                            contentColor = c.ink
+                        ),
+                        modifier = Modifier.border(1.dp, c.line, RoundedCornerShape(4.dp))
+                    ) {
+                        Text(stringResource(R.string.settings_claim_action), fontSize = 12.sp)
+                    }
+                }
+                when (val claim = state.claimState) {
+                    is ClaimState.Working -> Text(
+                        text = stringResource(R.string.settings_claim_working),
+                        color = c.ink3,
+                        fontSize = 11.sp
+                    )
+                    is ClaimState.Done -> Text(
+                        text = stringResource(R.string.settings_claim_done),
+                        color = c.ink2,
+                        fontSize = 11.sp
+                    )
+                    is ClaimState.Failed -> Text(
+                        text = claim.message,
+                        color = c.danger,
+                        fontSize = 11.sp
+                    )
+                    is ClaimState.Idle -> Unit
                 }
             }
         }
@@ -326,7 +391,8 @@ private fun TextField(
     value: String,
     onValueChange: (String) -> Unit,
     visualTransformation: VisualTransformation = VisualTransformation.None,
-    trailing: (@Composable () -> Unit)? = null
+    trailing: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier.fillMaxWidth()
 ) {
     val c = LocalKaizenColors.current
     OutlinedTextField(
@@ -337,7 +403,7 @@ private fun TextField(
         visualTransformation = visualTransformation,
         trailingIcon = trailing,
         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier
     )
 }
 
@@ -461,7 +527,14 @@ private fun PairCodeBlock(pair: PairCode, onDismiss: () -> Unit) {
         )
         Text(
             text = if (remaining > 0) {
-                stringResource(R.string.settings_pair_expires, DurationFormat.countdown(remaining))
+                stringResource(
+                    R.string.settings_pair_expires,
+                    stringResource(
+                        if (pair.forDevice) R.string.settings_pair_where_device
+                        else R.string.settings_pair_where_browser
+                    ),
+                    DurationFormat.countdown(remaining)
+                )
             } else {
                 stringResource(R.string.settings_pair_expired)
             },

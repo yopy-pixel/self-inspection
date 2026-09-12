@@ -80,17 +80,24 @@ export function normalizePairCode(input: string): string {
     .join("");
 }
 
+/** ペアコードの用途。 */
+export type PairKind = "browser" | "device";
+
 /**
  * ペアコードを発行する。
  *
  * 発行できるのは**認証済みの主体だけ**（端末トークンを持つアプリ、または
  * ログイン済みのブラウザ）。未認証の画面で発行すると、その画面を開いた
  * 誰もがログインできてしまい、認証が意味を失う。
+ *
+ * [kind] は用途。`browser` は閲覧セッション、`device` は端末トークンを配る。
+ * **引き換え側で一致を確認する**ので、取り違えは通らない。
  */
 export async function mintPairCode(
   db: Database,
   source: { deviceId?: string | null; sessionId?: string | null },
-  now: number
+  now: number,
+  kind: PairKind = "browser"
 ): Promise<{ code: string; expiresAt: number }> {
   const code = generatePairCode();
   const codeHash = await hashToken(code);
@@ -98,10 +105,10 @@ export async function mintPairCode(
 
   await db
     .prepare(
-      `INSERT INTO pair_code (code_hash, device_id, session_id, created_at, expires_at, used_at)
-       VALUES (?, ?, ?, ?, ?, NULL)`
+      `INSERT INTO pair_code (code_hash, device_id, session_id, created_at, expires_at, used_at, kind)
+       VALUES (?, ?, ?, ?, ?, NULL, ?)`
     )
-    .bind(codeHash, source.deviceId ?? null, source.sessionId ?? null, now, expiresAt)
+    .bind(codeHash, source.deviceId ?? null, source.sessionId ?? null, now, expiresAt, kind)
     .run();
 
   // 期限切れの掃除。**発行時にまとめて**行う（読み取り経路を軽く保つ）。
@@ -116,18 +123,19 @@ export async function mintPairCode(
 /** 引き換えの結果。 */
 export type RedeemResult =
   | { ok: true; deviceId: string | null; sessionId: string | null }
-  | { ok: false; reason: "not_found" | "expired" | "used" };
+  | { ok: false; reason: "not_found" | "expired" | "used" | "wrong_kind" };
 
 /**
  * ペアコードを引き換える。**単回使用。**
  *
- * 「見つからない」「期限切れ」「使用済み」を区別して返すが、
+ * 「見つからない」「期限切れ」「使用済み」「用途違い」を区別して返すが、
  * HTTP の応答では区別しない（総当たりの手がかりを与えないため）。
  */
 export async function redeemPairCode(
   db: Database,
   input: string,
-  now: number
+  now: number,
+  kind: PairKind = "browser"
 ): Promise<RedeemResult> {
   const code = normalizePairCode(input);
   if (code.length !== CODE_LENGTH) return { ok: false, reason: "not_found" };
@@ -136,11 +144,18 @@ export async function redeemPairCode(
   const row = await db
     .prepare(`SELECT * FROM pair_code WHERE code_hash = ?`)
     .bind(hash)
-    .first<{ device_id: string | null; session_id: string | null; expires_at: number; used_at: number | null }>();
+    .first<{
+      device_id: string | null;
+      session_id: string | null;
+      expires_at: number;
+      used_at: number | null;
+      kind: string;
+    }>();
 
   if (!row) return { ok: false, reason: "not_found" };
   if (row.used_at !== null) return { ok: false, reason: "used" };
   if (row.expires_at <= now) return { ok: false, reason: "expired" };
+  if (row.kind !== kind) return { ok: false, reason: "wrong_kind" };
 
   // **使用済みにするのが先。** 逆にすると同時アクセスで二重に使われる。
   const marked = await db

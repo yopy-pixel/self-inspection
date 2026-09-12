@@ -149,7 +149,10 @@ class MainActivity : ComponentActivity() {
                         onTestConnection = settingsVm::testConnection,
                         onSyncNow = settingsVm::syncNow,
                         onPairBrowser = settingsVm::pairBrowser,
+                        onPairDevice = settingsVm::pairDevice,
                         onClearPairCode = settingsVm::clearPairCode,
+                        onClaimCode = settingsVm::setClaimCode,
+                        onClaimDevice = settingsVm::claimThisDevice,
                         onSave = {
                             settingsVm.save()
                             // 上限を変えたらダッシュボードの判定も変わるため読み直す

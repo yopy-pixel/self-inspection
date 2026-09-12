@@ -84,12 +84,21 @@
     <string name="settings_sync_now">Sync now</string>
     <string name="settings_last_sync">last sync %1$s</string>
     <string name="settings_never_synced">never synced</string>
-    <!-- ブラウザのペアリング（複数のPC・スマホを想定） -->
+    <!-- ブラウザ・端末のペアリング（複数のPC・スマホを想定） -->
     <string name="settings_pair">Pair a browser</string>
-    <string name="settings_pair_hint">Sign in on another browser without typing the token. Each browser is listed on the server and can be revoked on its own.</string>
-    <string name="settings_pair_expires">expires in %1$s</string>
+    <string name="settings_pair_device">Add a device</string>
+    <string name="settings_pair_hint">Add another browser or phone without typing the token. Each one is listed on the server and can be revoked on its own.</string>
+    <string name="settings_pair_expires">for the %1$s · expires in %2$s</string>
+    <string name="settings_pair_where_browser">browser</string>
+    <string name="settings_pair_where_device">device</string>
     <string name="settings_pair_expired">expired — pair again</string>
     <string name="settings_pair_dismiss">Hide</string>
+    <!-- この端末をコードで登録する（新しい端末の初回セットアップ） -->
+    <string name="settings_claim_hint">On a new device, enter the code from an existing one.</string>
+    <string name="settings_claim_code">Pairing code</string>
+    <string name="settings_claim_action">Register</string>
+    <string name="settings_claim_working">Registering…</string>
+    <string name="settings_claim_done">Registered — this device is ready to sync.</string>
     <string name="settings_saved">Saved</string>
     <string name="settings_https_required">Endpoint must start with https://</string>
 

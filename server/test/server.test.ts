@@ -1182,6 +1182,203 @@ describe("ペアコードとブラウザセッション", () => {
   });
 });
 
+// ===========================================================================
+describe("端末の登録（ペアコード）", () => {
+  const now = Date.UTC(2026, 8, 14, 12, 0, 0);
+  const today = "2026-09-14";
+
+  async function envWithDevice() {
+    const db = freshDb();
+    await seedDevice(db, DEVICE, await hashToken(TOKEN), "phone");
+    return { DB: db };
+  }
+
+  function postJson(path: string, body: unknown, token?: string): Request {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (token) headers["authorization"] = `Bearer ${token}`;
+    return new Request(`https://example.com${path}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** アプリ（既存端末）として端末用コードを発行する。 */
+  async function mintDeviceCode(env: { DB: ReturnType<typeof freshDb> }, at = now) {
+    const res = await handle(postJson("/api/v1/pair", { for: "device" }, TOKEN), env as never, at);
+    assert.equal(res.status, 200);
+    return (await res.json()) as { code: string; kind: string; expiresInSeconds: number };
+  }
+
+  test("端末用のコードを発行できる", async () => {
+    const env = await envWithDevice();
+    const { code, kind, expiresInSeconds } = await mintDeviceCode(env);
+
+    assert.equal(kind, "device");
+    assert.equal(code.length, 8);
+    assert.equal(expiresInSeconds, 180);
+  });
+
+  test("for を省略するとブラウザ用になる", async () => {
+    const env = await envWithDevice();
+    const res = await handle(postJson("/api/v1/pair", {}, TOKEN), env, now);
+    assert.equal((await res.json() as { kind: string }).kind, "browser");
+  });
+
+  test("未認証では端末用のコードを発行できない", async () => {
+    // **ここが要**: 未認証で発行できると、誰でも端末を増やせてしまう。
+    const env = await envWithDevice();
+    const res = await handle(postJson("/api/v1/pair", { for: "device" }), env, now);
+    assert.equal(res.status, 401);
+  });
+
+  test("コードで新しい端末を登録できる", async () => {
+    const env = await envWithDevice();
+    const { code } = await mintDeviceCode(env);
+
+    const res = await handle(
+      postJson("/api/v1/devices/claim", { code, label: "second-phone" }),
+      env,
+      now
+    );
+
+    assert.equal(res.status, 201);
+    const body = (await res.json()) as { deviceId: string; token: string; label: string };
+    assert.ok(body.deviceId.length > 0);
+    assert.ok(body.token.length > 0);
+    assert.equal(body.label, "second-phone");
+    // 既存端末とは別の端末であること
+    assert.notEqual(body.deviceId, DEVICE);
+    assert.notEqual(body.token, TOKEN);
+  });
+
+  test("登録した端末のトークンで送信できる", async () => {
+    // トークンを配るだけでは意味がない。**実際に使えること**まで見る。
+    const env = await envWithDevice();
+    const { code } = await mintDeviceCode(env);
+    const claimed = (await (
+      await handle(postJson("/api/v1/devices/claim", { code, label: "second" }), env, now)
+    ).json()) as { deviceId: string; token: string };
+
+    const res = await handle(
+      postJson(
+        "/api/v1/ingest",
+        {
+          batchId: "from-second",
+          deviceId: claimed.deviceId,
+          schemaVersion: 1,
+          events: [ev(today, "com.b", 1_757_700_000_000, 1_757_700_060_000)],
+        },
+        claimed.token
+      ),
+      env,
+      now
+    );
+
+    assert.equal(res.status, 202);
+    // 集計にも出る（端末は合算される）
+    const summary = await querySummary(env.DB, today, today);
+    assert.equal(summary.byDevice.length, 1);
+  });
+
+  test("同じコードで2台目は登録できない", async () => {
+    const env = await envWithDevice();
+    const { code } = await mintDeviceCode(env);
+
+    const first = await handle(postJson("/api/v1/devices/claim", { code }), env, now);
+    assert.equal(first.status, 201);
+
+    const second = await handle(postJson("/api/v1/devices/claim", { code }), env, now);
+    assert.equal(second.status, 401);
+  });
+
+  test("期限切れのコードでは登録できない", async () => {
+    const env = await envWithDevice();
+    const { code } = await mintDeviceCode(env);
+
+    const res = await handle(
+      postJson("/api/v1/devices/claim", { code }),
+      env,
+      now + 3 * 60_000 + 1
+    );
+    assert.equal(res.status, 401);
+  });
+
+  test("ブラウザ用のコードでは端末を登録できない", async () => {
+    // 閲覧用に配ったコードが、書き込み権限（端末トークン）を生まないこと。
+    const env = await envWithDevice();
+    const browserCode = (await (
+      await handle(postJson("/api/v1/pair", {}, TOKEN), env, now)
+    ).json()) as { code: string };
+
+    const res = await handle(postJson("/api/v1/devices/claim", { code: browserCode.code }), env, now);
+    assert.equal(res.status, 401);
+  });
+
+  test("端末用のコードはブラウザのログインに使えない", async () => {
+    // 逆向きも塞ぐ。用途は引き換え時に照合する。
+    const env = await envWithDevice();
+    const { code } = await mintDeviceCode(env);
+
+    const res = await handle(
+      new Request("https://example.com/dashboard", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: `pair=${code}`,
+      }),
+      env,
+      now
+    );
+    assert.equal(res.status, 401);
+    assert.equal(res.headers.get("set-cookie"), null);
+  });
+
+  test("label を省略すると device になる", async () => {
+    const env = await envWithDevice();
+    const { code } = await mintDeviceCode(env);
+
+    const res = await handle(postJson("/api/v1/devices/claim", { code }), env, now);
+    assert.equal(((await res.json()) as { label: string }).label, "device");
+  });
+
+  test("コードが空なら 400", async () => {
+    const env = await envWithDevice();
+    const res = await handle(postJson("/api/v1/devices/claim", { code: "" }), env, now);
+    assert.equal(res.status, 400);
+  });
+
+  test("でたらめなコードは 401", async () => {
+    const env = await envWithDevice();
+    const res = await handle(postJson("/api/v1/devices/claim", { code: "ZZZZZZZZ" }), env, now);
+    assert.equal(res.status, 401);
+  });
+
+  test("失効させた端末のトークンでは送信できない", async () => {
+    // 端末の失効（device.revoked）は管理操作。ここでは既存の仕組みが
+    // claim で作った端末にも効くことを確認する。
+    const env = await envWithDevice();
+    const { code } = await mintDeviceCode(env);
+    const claimed = (await (
+      await handle(postJson("/api/v1/devices/claim", { code }), env, now)
+    ).json()) as { deviceId: string; token: string };
+
+    await env.DB.prepare(`UPDATE device SET revoked = 1 WHERE id = ?`)
+      .bind(claimed.deviceId)
+      .run();
+
+    const res = await handle(
+      postJson(
+        "/api/v1/ingest",
+        { batchId: "b", deviceId: claimed.deviceId, schemaVersion: 1, events: [] },
+        claimed.token
+      ),
+      env,
+      now
+    );
+    assert.equal(res.status, 401);
+  });
+});
+
 describe("画面のヘルパ", () => {
   test("Cookie からトークンを取り出す", () => {
     assert.equal(tokenFromCookie("sk_token=abc"), "abc");
