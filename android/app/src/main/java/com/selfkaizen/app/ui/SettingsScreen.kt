@@ -88,8 +88,11 @@ fun SettingsScreen(
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
             )
+            // 閉じるだけ（保存しない）。保存は最下部の Save ボタン。
+            // 「保存せず閉じる」と「保存する」を同じラベルにすると、
+            // 押した結果が予測できなくなる（実際に Done が2つあった）。
             TextButton(onClick = onClose) {
-                Text(stringResource(R.string.settings_close), color = c.ink)
+                Text(stringResource(R.string.settings_close), color = c.ink, fontSize = 22.sp)
             }
         }
 
@@ -227,7 +230,7 @@ fun SettingsScreen(
             colors = ButtonDefaults.buttonColors(containerColor = c.ink, contentColor = c.bg),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(stringResource(R.string.settings_close), fontSize = 13.sp)
+            Text(stringResource(R.string.settings_save), fontSize = 13.sp)
         }
 
         Spacer(Modifier.height(20.dp))

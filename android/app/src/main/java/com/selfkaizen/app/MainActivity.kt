@@ -154,6 +154,10 @@ class MainActivity : ComponentActivity() {
                             refreshTick++
                         },
                         onClose = {
+                            // 「保存せず閉じる」= 編集中の値を破棄する。
+                            // ViewModel は Activity スコープで画面を閉じても生き残るため、
+                            // 読み直さないと破棄した値が次に開いたときに残ってしまう。
+                            settingsVm.load()
                             showSettings = false
                             refreshTick++
                         }

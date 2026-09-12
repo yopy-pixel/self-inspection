@@ -83,6 +83,15 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         observeSyncWork()
     }
 
+    /**
+     * 永続化されている値で state を作り直す。
+     *
+     * **`×`（保存せず閉じる）でもこれを呼ぶこと。** この ViewModel は
+     * Activity スコープなので、画面を閉じてもインスタンスは生き続ける。
+     * 再読込しないと、破棄したはずの編集値が次に開いたときに残り、
+     * そのまま `Save` を押すと破棄したつもりの値が保存されてしまう
+     * （実機検証で発生: `×` で閉じたのに上限 24h が残っていた）。
+     */
     fun load() {
         viewModelScope.launch {
             val rules = withContext(Dispatchers.IO) { ruleRepo.load() }
@@ -105,7 +114,11 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 token = sync.token,
                 lastSyncAt = lastSyncAt,
                 lastSyncResult = lastResult,
-                now = System.currentTimeMillis()
+                now = System.currentTimeMillis(),
+                // 読み直した直後は「保存済み」でも「接続確認済み」でもない。
+                savedAt = null,
+                error = null,
+                connection = ConnectionTestState.Idle
             )
         }
     }
@@ -151,35 +164,51 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- 編集 ----
 
+    /**
+     * 編集したら「Saved」表示を消す。
+     *
+     * これをしないと、一度保存したあとに値を書き換えても「Saved」が
+     * 残り続け、**未保存の変更があるのに保存済みに見える**。
+     * `Save` と `×`（保存せず閉じる）が別操作になったため、
+     * どちらの状態かを常に正しく見せる必要がある。
+     */
+    private fun markDirty(): SettingsUiState {
+        // エラー表示は編集で消す（前回の失敗が残ると誤解を招く）。
+        return _state.value.copy(savedAt = null, error = null)
+    }
+
     fun setLimitMinutes(minutes: Int) {
-        _state.value = _state.value.copy(limitMinutes = minutes.coerceIn(0, MAX_LIMIT_MINUTES))
+        _state.value = markDirty().copy(limitMinutes = minutes.coerceIn(0, MAX_LIMIT_MINUTES))
     }
 
     fun setApproachingMinutes(minutes: Int) {
-        _state.value = _state.value.copy(
+        _state.value = markDirty().copy(
             approachingMinutes = minutes.coerceIn(0, MAX_APPROACHING_MINUTES)
         )
     }
 
     fun setLimitEnabled(enabled: Boolean) {
-        _state.value = _state.value.copy(limitEnabled = enabled)
+        _state.value = markDirty().copy(limitEnabled = enabled)
     }
 
     fun setSyncEnabled(enabled: Boolean) {
-        _state.value = _state.value.copy(syncEnabled = enabled)
+        _state.value = markDirty().copy(syncEnabled = enabled)
     }
 
     fun setEndpoint(value: String) {
         // 末尾の空白・改行は貼り付け時に混入しやすいので落とす。
-        _state.value = _state.value.copy(endpoint = value.trim(), connection = ConnectionTestState.Idle)
+        _state.value = markDirty()
+            .copy(endpoint = value.trim(), connection = ConnectionTestState.Idle)
     }
 
     fun setDeviceId(value: String) {
-        _state.value = _state.value.copy(deviceId = value.trim(), connection = ConnectionTestState.Idle)
+        _state.value = markDirty()
+            .copy(deviceId = value.trim(), connection = ConnectionTestState.Idle)
     }
 
     fun setToken(value: String) {
-        _state.value = _state.value.copy(token = value.trim(), connection = ConnectionTestState.Idle)
+        _state.value = markDirty()
+            .copy(token = value.trim(), connection = ConnectionTestState.Idle)
     }
 
     /** サーバーが返した JSON（deviceId と token）をまとめて貼り付ける。 */
@@ -191,7 +220,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         val token = extractJsonString(trimmed, "token")
 
         if (deviceId != null || token != null) {
-            _state.value = _state.value.copy(
+            _state.value = markDirty().copy(
                 deviceId = deviceId ?: _state.value.deviceId,
                 token = token ?: _state.value.token,
                 connection = ConnectionTestState.Idle
@@ -199,7 +228,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             // JSON でなければ、1行目を deviceId、2行目を token として扱う。
             val lines = trimmed.lines().map { it.trim() }.filter { it.isNotEmpty() }
-            _state.value = _state.value.copy(
+            _state.value = markDirty().copy(
                 deviceId = lines.getOrNull(0) ?: _state.value.deviceId,
                 token = lines.getOrNull(1) ?: _state.value.token,
                 connection = ConnectionTestState.Idle
