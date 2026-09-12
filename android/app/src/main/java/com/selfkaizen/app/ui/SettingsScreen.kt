@@ -38,6 +38,7 @@ import androidx.compose.ui.res.stringResource
 import com.selfkaizen.app.R
 import com.selfkaizen.app.ui.theme.LocalKaizenColors
 import com.selfkaizen.app.ui.theme.SectionLabelStyle
+import java.time.ZoneId
 
 /**
  * 設定画面。
@@ -381,8 +382,11 @@ private fun ConnectionStatus(state: SettingsUiState) {
 @Composable
 private fun LastSyncLine(state: SettingsUiState) {
     val c = LocalKaizenColors.current
+    val zone = ZoneId.systemDefault()
+    // 「2m ago」ではなく絶対時刻を出す。秒が無いと、実際に走ったのかを
+    // 確かめられないため（この画面の目的は同期の成否の確認）。
     val text = state.lastSyncAt?.let {
-        stringResource(R.string.settings_last_sync, DurationFormat.ago(it, state.now))
+        stringResource(R.string.settings_last_sync, DurationFormat.timestamp(it, zone))
     } ?: stringResource(R.string.settings_never_synced)
 
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

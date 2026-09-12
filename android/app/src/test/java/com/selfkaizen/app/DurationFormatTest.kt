@@ -95,6 +95,30 @@ class DurationFormatTest {
     }
 
     @Test
+    fun `最終同期は絶対時刻で秒まで出す`() {
+        // 「2m ago」ではなく実時刻。同期が本当に走ったかを確認できるようにする。
+        val t = LocalDate.parse("2026-09-13").atTime(1, 5, 42).atZone(zone).toInstant()
+            .toEpochMilli()
+        assertThat(DurationFormat.timestamp(t, zone)).isEqualTo("2026-09-13 01:05:42")
+    }
+
+    @Test
+    fun `絶対時刻は日付をまたいでも日付を省かない`() {
+        val t = LocalDate.parse("2026-01-02").atTime(0, 0, 0).atZone(zone).toInstant()
+            .toEpochMilli()
+        assertThat(DurationFormat.timestamp(t, zone)).isEqualTo("2026-01-02 00:00:00")
+    }
+
+    @Test
+    fun `絶対時刻は渡したタイムゾーンで表す`() {
+        // UTC の 2026-09-12 16:05:42 = 東京の 2026-09-13 01:05:42
+        val t = LocalDate.parse("2026-09-12").atTime(16, 5, 42).atZone(ZoneId.of("UTC"))
+            .toInstant().toEpochMilli()
+        assertThat(DurationFormat.timestamp(t, zone)).isEqualTo("2026-09-13 01:05:42")
+        assertThat(DurationFormat.timestamp(t, ZoneId.of("UTC"))).isEqualTo("2026-09-12 16:05:42")
+    }
+
+    @Test
     fun `未来の時刻はjust nowになる`() {
         val now = at("2026-09-14", 12, 0)
         assertThat(DurationFormat.ago(now + 60_000L, now)).isEqualTo("just now")

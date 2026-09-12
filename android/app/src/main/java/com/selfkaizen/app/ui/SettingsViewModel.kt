@@ -48,8 +48,7 @@ data class SettingsUiState(
     val lastSyncAt: Long? = null,
     val lastSyncResult: String? = null,
     val savedAt: Long? = null,
-    val error: String? = null,
-    val now: Long = System.currentTimeMillis()
+    val error: String? = null
 ) {
     val isConfigured: Boolean
         get() = syncEnabled && endpoint.isNotBlank() && deviceId.isNotBlank() && token.isNotBlank()
@@ -114,7 +113,6 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 token = sync.token,
                 lastSyncAt = lastSyncAt,
                 lastSyncResult = lastResult,
-                now = System.currentTimeMillis(),
                 // 読み直した直後は「保存済み」でも「接続確認済み」でもない。
                 savedAt = null,
                 error = null,
@@ -156,8 +154,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             val result = withContext(Dispatchers.IO) { dao.getState(SyncWorker.KEY_LAST_RESULT) }
             _state.value = _state.value.copy(
                 lastSyncAt = at,
-                lastSyncResult = result,
-                now = System.currentTimeMillis()
+                lastSyncResult = result
             )
         }
     }
@@ -263,6 +260,11 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
      * 永続化された設定（＝空）を読むため何も送らない。
      * 「入力したのに同期されない」という分かりにくい状態になる
      * （エミュレータ検証で実際に発生した）。
+     *
+     * **ここで `savedAt` は立てない。** 保存は同期の前提条件として
+     * 黙って行うものであり、押した覚えのない「Saved」を出すと
+     * 「何が保存されたのか」が分からなくなる。この操作の結果は
+     * 「last sync」の行（絶対時刻＋挿入件数）で示す。
      */
     fun syncNow() {
         val s = _state.value
@@ -278,7 +280,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 SyncScheduler.schedulePeriodic(context)
                 SyncScheduler.syncNow(context)
             }
-            _state.value = _state.value.copy(savedAt = System.currentTimeMillis(), error = null)
+            _state.value = _state.value.copy(error = null)
         }
     }
 
@@ -339,8 +341,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                         ConnectionTestState.Unauthorized(result.status)
                     is ConnectionCheck.Failed ->
                         ConnectionTestState.Failed(result.message)
-                },
-                now = System.currentTimeMillis()
+                }
             )
         }
     }

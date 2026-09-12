@@ -82,6 +82,22 @@ object DurationFormat {
     }
 
     /**
+     * 絶対時刻 `2026-09-13 01:05:42`。
+     *
+     * **最終同期の表示にはこちらを使う。** 「2m ago」は目安としてしか読めず、
+     * 秒が分からないため、同期が実際にいつ走ったのかを確かめられない。
+     * 日付を省かないのも同じ理由（日をまたいだ同期を見分けられない）。
+     */
+    fun timestamp(epochMillis: Long, zone: java.time.ZoneId): String {
+        val t = java.time.Instant.ofEpochMilli(epochMillis).atZone(zone)
+        return String.format(
+            Locale.US,
+            "%04d-%02d-%02d %02d:%02d:%02d",
+            t.year, t.monthValue, t.dayOfMonth, t.hour, t.minute, t.second
+        )
+    }
+
+    /**
      * 「どれくらい前か」を短く表す。収集停止の検知に使う（B-4）。
      * `2h ago` / `3d ago` / `just now`
      */
