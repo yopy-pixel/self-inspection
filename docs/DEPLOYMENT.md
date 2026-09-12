@@ -1,7 +1,17 @@
 # デプロイ手順書（Cloudflare Workers + D1）
 
 **対象:** `server/`（集約サーバー）
-**状態:** コードは完成・検証済み。**残りは Cloudflare アカウントでの作業のみ。**
+**状態:** ✅ **デプロイ済み（2026-09-14）**
+
+| 項目 | 値 |
+|---|---|
+| URL | `https://self-kaizen.yoshitashou.workers.dev` |
+| Worker 名 | `self-kaizen` |
+| D1 | `self-kaizen`（`e5cc48b5-cf15-4a5e-b9ef-3d17587e1b74`、APAC） |
+| Version ID | `4d2db5df-e7e4-4961-b4ce-adef7ecc9f0d` |
+
+**接続情報（Android アプリに入力する値）** は `server/.env.local` に保存されている
+（`.gitignore` の `server/.env.*` で除外済み）。
 
 このドキュメントの手順を上から実行すればデプロイできる。
 **「ここは私（AI）ができない」箇所を明示**している。
@@ -20,12 +30,115 @@
 | D1 マイグレーション（ローカル） | **成功**（9コマンド） |
 | Android ↔ サーバー契約テスト | **実通信で成功** |
 | `.gitignore` | **作成済み** |
-| **Cloudflare アカウント** | **未取得（あなたの作業）** |
-| **D1 の `database_id`** | **未設定（あなたの作業）** |
-| **本番シークレット** | **未設定（あなたの作業）** |
+| **Cloudflare アカウント** | ✅ 取得済み（`Yoshitashou@gmail.com`） |
+| **D1 の `database_id`** | ✅ 設定済み（`wrangler.toml` に反映） |
+| **本番シークレット** | ✅ 設定済み（`ADMIN_TOKEN`） |
+| **本番マイグレーション** | ✅ 適用済み（9コマンド） |
 
-> **AI が代行できないのはこの3つだけ。** 理由は Cloudflare の認証が
-> あなたのアカウントに紐づくため。それ以外は全て準備済み。
+> **AI が代行できたのは、あなたが `wrangler login` で OAuth を通した後のみ。**
+> 認証だけはアカウントに紐づくため代行できない。
+
+---
+
+## 0.5 デプロイ方法は2つある（git連携 / CLI）
+
+**どちらでも同じ Worker ができる。** ただし**自動化される範囲が違う。**
+
+### 方法A: git連携（Workers Builds）— push で自動デプロイ
+
+Cloudflare のダッシュボードで GitHub リポジトリを接続する方式。
+`main` に push するたびに自動でビルド・デプロイされる。
+
+**⚠️ `Root directory` は接続画面には無い。**
+
+公式ドキュメント（Workers Builds > Configuration）で確認した事実:
+
+> Build settings can be found by navigating to **Settings** > **Build** within your Worker.
+
+つまり **Worker を作成した後**に現れる設定。リポジトリを接続する画面には
+`Root directory` の欄が無いため、そこで探しても見つからない。
+
+**手順:**
+
+1. **Workers & Pages → Create → Connect to Git** でリポジトリとブランチを選ぶ
+   （この時点では Root directory を指定できない）
+2. Worker が作成される。**最初のビルドは失敗するか、PR が作られる**（下記の注意を参照）
+3. **その Worker の Settings → Build** を開く
+4. **`Root directory` に `server` を入力して保存**
+5. ビルドを再実行（または push し直す）
+
+**設定値:**
+
+| 項目 | 値 | 場所 |
+|---|---|---|
+| Git repository | `yopy-pixel/self-inspection` | 接続画面 |
+| Git branch | `main` | 接続画面 |
+| **Root directory** | **`server`** | **Settings → Build**（作成後） |
+| Build command | `npm install` | Settings → Build |
+| Deploy command | `npx wrangler deploy`（既定） | Settings → Build |
+
+> **`Root directory` を設定しないと自動構成が走る。**
+> 公式ドキュメントより:
+> 「If your repository does not have a Wrangler configuration file, the deploy command
+> (`wrangler deploy`) will trigger **automatic project configuration**.
+> This detects your framework, creates the necessary configuration, and
+> **opens a pull request** for you to review.」
+>
+> リポジトリ直下に `wrangler.toml` が無いため（`server/` にある）、
+> **フレームワーク自動検出が走って意図しない PR が作られる。**
+> これが起きたら Root directory を設定して PR を閉じる。
+
+**この方式の利点:** push するだけで反映される。ローカルに認証情報を持たなくてよい。
+
+### 方法B: wrangler CLI — 手元から手動デプロイ
+
+このドキュメントの §1〜§5 の手順。`npx wrangler deploy` を手元で実行する。
+
+**利点:** 失敗したときエラーがその場で見える。初回はこちらが確実。
+
+### ⚠️ git連携でも自動化されないもの
+
+**ここが最も誤解しやすい点。**
+
+| 項目 | なぜ自動化されないか | 対処 |
+|---|---|---|
+| **D1 の `database_id`** | `wrangler.toml` に**書いてコミット**する必要がある | 後述の手順で設定してコミット |
+| **`ADMIN_TOKEN`** | シークレット。**リポジトリに置けない** | `npx wrangler secret put ADMIN_TOKEN`、またはダッシュボードの **Settings → Variables and Secrets** |
+| **D1 マイグレーション** | ビルド手順に含まれない | `npx wrangler d1 migrations apply self-kaizen --remote` |
+
+つまり **git連携にしても、初回の「D1作成・ID記入・シークレット登録・マイグレーション」は手作業**。
+2回目以降のコード変更だけが自動化される。
+
+> **⚠️「Build variables and secrets」と「Variables and Secrets」は別物。**
+> 公式ドキュメントより:
+> 「Build variables will **not be accessible at runtime**.
+> If you would like to configure runtime variables you can do so in
+> **Settings > Variables & Secrets**」
+>
+> `ADMIN_TOKEN` は**実行時**に必要なシークレットなので、
+> `Settings → Build` 側ではなく
+> **`Settings → Variables and Secrets`**（または `wrangler secret put`）に入れること。
+> ここを間違えると「デプロイは成功するのに認証が通らない」という分かりにくい症状になる。
+
+### 🚧 現状のブロッカー（2026-09-14 時点）
+
+**`server/wrangler.toml` がプレースホルダのままコミットされている:**
+
+```toml
+database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+```
+
+この状態で push しても、**git連携のビルドは D1 バインディングを解決できず失敗する。**
+（`wrangler deploy` は存在しない DB ID をエラーにする）
+
+**したがって手順は必ず次の順序になる:**
+
+1. `npx wrangler login`
+2. `npx wrangler d1 create self-kaizen` → 出力された `database_id` を `wrangler.toml` に貼る
+3. **その変更をコミットして push**（git連携を使う場合はここが必須）
+4. `npx wrangler d1 migrations apply self-kaizen --remote`
+5. `npx wrangler secret put ADMIN_TOKEN`
+6. デプロイ（push すれば自動 / または `npx wrangler deploy`）
 
 ---
 
@@ -156,6 +269,20 @@ Deployed self-kaizen triggers (x.xx sec)
 
 ## 6. 動作確認（デプロイ直後）
 
+> **2026-09-14 に実施済み。** 結果:
+>
+> | 確認 | 結果 |
+> |---|---|
+> | `/healthz` (https) | **200** |
+> | `/healthz` (http) | **403**（平文拒否） |
+> | `/api/v1/summary` 認証なし | **401** |
+> | `/api/v1/summary` 誤トークン | **401** |
+> | `/api/v1/summary` 端末トークン | **200**（空の集計を返す） |
+>
+> **注意:** `/api/v1/summary` は**端末トークン**を要求する。
+> `ADMIN_TOKEN` では 401 になるのが正しい（admin は端末登録用）。
+
+
 ```bash
 # 6-1. 死活確認
 curl https://self-kaizen.<サブドメイン>.workers.dev/healthz
@@ -197,6 +324,10 @@ curl -s "https://self-kaizen.<サブドメイン>.workers.dev/api/v1/summary" \
   -H "Authorization: Bearer <端末トークン>" | python3 -m json.tool
 ```
 
+> **画面から入力できない端末（Xiaomi など）**では、`adb shell input` が
+> `INJECT_EVENTS` で拒否されます。`DEVICE-SETUP.md` §7
+> 「画面を触らずに設定を入れる（`adb` 注入・debug 限定）」を使ってください。
+
 ---
 
 ## 8. デプロイ後の確認事項
@@ -208,6 +339,19 @@ curl -s "https://self-kaizen.<サブドメイン>.workers.dev/api/v1/summary" \
 | 端末一覧 | Dashboard > Workers > D1 > self-kaizen > Console |
 | 使用量 | Dashboard > Workers > Metrics（無料枠の消費を確認） |
 | ロールバック | `npx wrangler rollback`（直前のバージョンに戻す） |
+
+### 実測（2026-09-14・実機 Xiaomi 25010PN30G / Android 16）
+
+初回同期が成功し、D1 に実データが入ることを確認済み。
+
+| 項目 | 実測値 |
+|---|---|
+| 同期結果（logcat） | `挿入=1208 重複=0 バッチ=3` |
+| 再同期（設定画面） | `挿入=0 重複=0 バッチ=1` — 冪等（重複挿入なし） |
+| `/healthz` | 200 `{"ok":true,...}` |
+| `/api/v1/summary`（端末トークン） | 200。`dailyTotals` が 3 日分、`appTotals` が実データで返る |
+| `/api/v1/summary`（未認証 / 不正トークン） | 401 |
+| `http://` でアクセス | 403（HTTPS 必須が効いている） |
 
 ---
 

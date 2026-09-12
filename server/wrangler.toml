@@ -5,11 +5,11 @@ main = "src/index.ts"
 compatibility_date = "2026-09-01"
 
 # D1（サーバーレス SQLite）
-# database_id は `wrangler d1 create self-kaizen` の出力で置き換えること。
+# database_id は `wrangler d1 create self-kaizen` で作成済み（2026-09-14）。
 [[d1_databases]]
 binding = "DB"
 database_name = "self-kaizen"
-database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+database_id = "e5cc48b5-cf15-4a5e-b9ef-3d17587e1b74"
 
 # マイグレーションの置き場（wrangler d1 migrations が参照する）
 # migrations_dir = "migrations"

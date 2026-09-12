@@ -199,6 +199,53 @@ adb reverse tcp:8787 tcp:8787
 
 > `adb reverse` は **USB 接続を外すと無効**になります。
 
+### 画面を触らずに設定を入れる（`adb` 注入・debug 限定）
+
+Xiaomi の MIUI/HyperOS は `adb shell input tap` / `text` を
+`INJECT_EVENTS` 権限の欠如として拒否します。実機で手入力する代わりに、
+**起動 Intent の extra で同期設定を渡せます。**
+
+```bash
+ADB=~/Library/Android/sdk/platform-tools/adb
+TOKEN=...                       # 端末トークン（管理トークンではない）
+
+"$ADB" shell am force-stop com.selfkaizen.app
+"$ADB" shell am start -n com.selfkaizen.app/.MainActivity \
+  --es endpoint "https://self-kaizen.yoshitashou.workers.dev" \
+  --es deviceId "<deviceId>" \
+  --es token    "$TOKEN" \
+  --ez enableSync true
+```
+
+成功すると logcat に次が出ます（**トークンは出ません**）:
+
+```
+MainActivity: adb から同期設定を保存した (endpoint=https://...)
+SyncWorker:   同期結果: 挿入=1208 重複=0 バッチ=3
+```
+
+```bash
+"$ADB" logcat -d -s MainActivity:* SyncWorker:* | tail
+```
+
+仕様と安全策:
+
+| 項目 | 挙動 |
+| --- | --- |
+| 有効になるビルド | **debug のみ**（`FLAG_DEBUGGABLE` を実行時に判定。release では即 return） |
+| 上書き範囲 | 渡した extra だけ。渡さなかった項目は既存値を保持 |
+| 不完全な設定 | endpoint / deviceId / token / enabled が揃わなければ**保存しない** |
+| ログ | endpoint のみ。**token と deviceId は出さない** |
+| 同期の起動 | この関数では投げない。直後の通常の配線（`isConfigured` → `syncNow`）が実行する |
+
+> コマンドラインにトークンが残るため、共有端末のシェル履歴では
+> `history -c` するか、`TOKEN=$(security find-generic-password ...)` のように
+> 変数経由で渡してください。
+
+> **注意:** debug ビルドではこの Activity が exported のため、
+> 他アプリからも同じ extra を送れば設定を書き換えられます。
+> 検証用の割り切りで、release ではこの経路ごと無効になります。
+
 ---
 
 ## 8. トラブルシューティング

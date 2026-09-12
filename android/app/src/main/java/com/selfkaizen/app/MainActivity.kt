@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -77,6 +78,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hasAccess = checkUsageAccess()
+
+        // デバッグ用: adb から同期設定を流し込む。
+        //
+        // MIUI/HyperOS は `adb shell input` を INJECT_EVENTS で拒否するため、
+        // 画面を操作せずに設定を入れる経路を用意した（2026-09-14）。
+        // debug ビルドでのみ動く（`applySetupFromIntent` 内で判定）。
+        applySetupFromIntent(intent)
 
         // 定期収集を登録する。
         //
@@ -208,6 +216,76 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * デバッグ用: `adb` から同期設定を流し込む。
+     *
+     * なぜ必要か: MIUI/HyperOS は `adb shell input` を INJECT_EVENTS 権限の
+     * 欠如として拒否するため、実機で設定画面を自動入力できない。
+     * 手入力の代わりに Intent の extra で設定を渡せるようにした。
+     *
+     * ```
+     * adb shell am start -n com.selfkaizen.app/.MainActivity \
+     *   --es endpoint https://... --es deviceId ... --es token ... --ez enableSync true
+     * ```
+     *
+     * **debug ビルドでのみ動く。** リリースビルドでは何もせず即座に戻る。
+     *
+     * ただし debug ビルドでは、この Activity は exported なので
+     * **他アプリからも同じ extra を送れば設定を書き換えられる**。
+     * 検証用の割り切りであり、release では経路ごと消える。
+     * トークンは絶対にログへ出さない（`SyncSettingsStore` と同じ方針）。
+     */
+    private fun applySetupFromIntent(intent: Intent?) {
+        // debug ビルド以外では一切受け付けない。
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (!debuggable) return
+
+        val extras = intent ?: return
+
+        val endpoint = extras.getStringExtra(EXTRA_ENDPOINT)
+        val deviceId = extras.getStringExtra(EXTRA_DEVICE_ID)
+        val token = extras.getStringExtra(EXTRA_TOKEN)
+        if (endpoint.isNullOrBlank() && deviceId.isNullOrBlank() && token.isNullOrBlank()) {
+            // 通常の起動（extra なし）。既存設定には触れない。
+            return
+        }
+
+        val store = SyncSettingsStore(this)
+        val current = store.load()
+
+        // 渡された項目だけを上書きする。渡されなかった項目は既存値を保つ。
+        val merged = current.copy(
+            endpoint = endpoint?.takeIf { it.isNotBlank() } ?: current.endpoint,
+            deviceId = deviceId?.takeIf { it.isNotBlank() } ?: current.deviceId,
+            token = token?.takeIf { it.isNotBlank() } ?: current.token,
+            enabled = if (extras.hasExtra(EXTRA_ENABLE_SYNC)) {
+                extras.getBooleanExtra(EXTRA_ENABLE_SYNC, current.enabled)
+            } else {
+                current.enabled
+            }
+        )
+
+        // 3項目が揃って初めて意味があるため、欠けている間は保存しない
+        // （中途半端な設定で有効化されると、失敗し続けるワーカーが積まれる）。
+        if (!merged.isConfigured) {
+            android.util.Log.w(
+                "MainActivity",
+                "adb 設定が不完全なため無視した (endpoint=${merged.endpoint.isNotBlank()}, " +
+                    "deviceId=${merged.deviceId.isNotBlank()}, token=${merged.token.isNotBlank()}, " +
+                    "enabled=${merged.enabled})"
+            )
+            return
+        }
+
+        store.save(merged)
+        // 値そのものは出さない。出したのは「入ったかどうか」だけ。
+        android.util.Log.i("MainActivity", "adb から同期設定を保存した (endpoint=${merged.endpoint})")
+
+        // ここでは同期を投げない。この直後の通常の配線
+        // （schedulePeriodic / isConfigured を見た syncNow）が
+        // 保存済みの設定を読んで実行するため、二重に積む必要がない。
+    }
+
+    /**
      * 通知許可を求める（API 33+ のみ）。
      *
      * 使用状況アクセスが未許可のときは求めない。
@@ -242,5 +320,13 @@ class MainActivity : ComponentActivity() {
         }
         runCatching { startActivity(intent) }
             .onFailure { startActivity(Intent(Settings.ACTION_SETTINGS)) }
+    }
+
+    private companion object {
+        /** `applySetupFromIntent` が読む extra。debug ビルド専用。 */
+        const val EXTRA_ENDPOINT = "endpoint"
+        const val EXTRA_DEVICE_ID = "deviceId"
+        const val EXTRA_TOKEN = "token"
+        const val EXTRA_ENABLE_SYNC = "enableSync"
     }
 }
