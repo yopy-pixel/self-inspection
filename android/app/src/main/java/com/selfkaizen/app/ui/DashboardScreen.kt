@@ -292,7 +292,14 @@ private fun AppRankingCard(state: DashboardState) {
         )
         if (apps.isEmpty()) {
             Text(
-                text = stringResource(R.string.label_never_collected),
+                // **過ぎた日に「まだ収集していない」は誤り。** その日はもう来ないので、
+                // 「これから収集される」と読めてしまう表現を使ってはいけない。
+                // 記録が無いという事実だけを記号で出す（SPEC §1）。
+                text = if (state.isTodaySelected) {
+                    stringResource(R.string.label_never_collected)
+                } else {
+                    stringResource(R.string.widget_none)
+                },
                 fontSize = 12.5.sp,
                 color = c.ink3
             )
