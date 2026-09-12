@@ -2,6 +2,8 @@ package com.selfkaizen.app
 
 import com.google.common.truth.Truth.assertThat
 import com.selfkaizen.app.data.TodayUsage
+import com.selfkaizen.app.data.UsageCondition
+import com.selfkaizen.app.data.STALE_AFTER_MILLIS
 import com.selfkaizen.app.rules.UsageStatus
 import com.selfkaizen.app.ui.DurationFormat
 import com.selfkaizen.app.widget.WidgetState
@@ -40,7 +42,7 @@ class WidgetStateTest {
     @Test
     fun `上限内は LEFT`() {
         val s = WidgetState.stateOf(usage(), hasPermission = true, now = now)
-        assertThat(s).isEqualTo(WidgetState.State.LEFT)
+        assertThat(s).isEqualTo(UsageCondition.LEFT)
     }
 
     @Test
@@ -50,7 +52,7 @@ class WidgetStateTest {
             hasPermission = true,
             now = now
         )
-        assertThat(s).isEqualTo(WidgetState.State.OVER)
+        assertThat(s).isEqualTo(UsageCondition.OVER)
     }
 
     @Test
@@ -60,13 +62,13 @@ class WidgetStateTest {
             hasPermission = true,
             now = now
         )
-        assertThat(s).isEqualTo(WidgetState.State.DISABLED)
+        assertThat(s).isEqualTo(UsageCondition.DISABLED)
     }
 
     @Test
     fun `権限が無ければ NO_PERMISSION`() {
         val s = WidgetState.stateOf(usage(), hasPermission = false, now = now)
-        assertThat(s).isEqualTo(WidgetState.State.NO_PERMISSION)
+        assertThat(s).isEqualTo(UsageCondition.NO_PERMISSION)
     }
 
     @Test
@@ -76,29 +78,29 @@ class WidgetStateTest {
             hasPermission = true,
             now = now
         )
-        assertThat(s).isEqualTo(WidgetState.State.STALE)
+        assertThat(s).isEqualTo(UsageCondition.STALE)
     }
 
     @Test
     fun `収集が古ければ STALE`() {
-        val old = now - WidgetState.STALE_AFTER_MILLIS - 1
+        val old = now - STALE_AFTER_MILLIS - 1
         val s = WidgetState.stateOf(
             usage(lastCollectedAt = old),
             hasPermission = true,
             now = now
         )
-        assertThat(s).isEqualTo(WidgetState.State.STALE)
+        assertThat(s).isEqualTo(UsageCondition.STALE)
     }
 
     @Test
     fun `古さの境界ちょうどは STALE にしない`() {
-        val edge = now - WidgetState.STALE_AFTER_MILLIS
+        val edge = now - STALE_AFTER_MILLIS
         val s = WidgetState.stateOf(
             usage(lastCollectedAt = edge),
             hasPermission = true,
             now = now
         )
-        assertThat(s).isEqualTo(WidgetState.State.LEFT)
+        assertThat(s).isEqualTo(UsageCondition.LEFT)
     }
 
     // ---------------- 優先順位（重要） ----------------
@@ -112,7 +114,7 @@ class WidgetStateTest {
             hasPermission = false,
             now = now
         )
-        assertThat(s).isEqualTo(WidgetState.State.NO_PERMISSION)
+        assertThat(s).isEqualTo(UsageCondition.NO_PERMISSION)
     }
 
     @Test
@@ -120,13 +122,13 @@ class WidgetStateTest {
         // **これが最も重要。** 古いデータで「超過」と出すと、
         // 実際には超過していないのに誤った行動を促す。
         // 判断できないときは「判断できない」と伝える。
-        val old = now - WidgetState.STALE_AFTER_MILLIS - 1
+        val old = now - STALE_AFTER_MILLIS - 1
         val s = WidgetState.stateOf(
             usage(status = UsageStatus.EXCEEDED, lastCollectedAt = old),
             hasPermission = true,
             now = now
         )
-        assertThat(s).isEqualTo(WidgetState.State.STALE)
+        assertThat(s).isEqualTo(UsageCondition.STALE)
     }
 
     // ---------------- バーの塗り ----------------
@@ -149,16 +151,16 @@ class WidgetStateTest {
 
     @Test
     fun `上限内と超過ではバーを出す`() {
-        assertThat(WidgetState.shouldShowBar(WidgetState.State.LEFT)).isTrue()
-        assertThat(WidgetState.shouldShowBar(WidgetState.State.OVER)).isTrue()
+        assertThat(WidgetState.shouldShowBar(UsageCondition.LEFT)).isTrue()
+        assertThat(WidgetState.shouldShowBar(UsageCondition.OVER)).isTrue()
     }
 
     @Test
     fun `上限なしと判断不能ではバーを隠す`() {
         // 上限が無いのにバーを出すと「何かに対する進捗」に見えて誤解を招く。
-        assertThat(WidgetState.shouldShowBar(WidgetState.State.DISABLED)).isFalse()
-        assertThat(WidgetState.shouldShowBar(WidgetState.State.NO_PERMISSION)).isFalse()
-        assertThat(WidgetState.shouldShowBar(WidgetState.State.STALE)).isFalse()
+        assertThat(WidgetState.shouldShowBar(UsageCondition.DISABLED)).isFalse()
+        assertThat(WidgetState.shouldShowBar(UsageCondition.NO_PERMISSION)).isFalse()
+        assertThat(WidgetState.shouldShowBar(UsageCondition.STALE)).isFalse()
     }
 
     // ---------------- ミニ用の表記（SPEC §1「単位表記」） ----------------

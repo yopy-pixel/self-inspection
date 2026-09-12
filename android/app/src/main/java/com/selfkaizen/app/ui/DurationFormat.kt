@@ -85,8 +85,18 @@ object DurationFormat {
      * 「どれくらい前か」を短く表す。収集停止の検知に使う（B-4）。
      * `2h ago` / `3d ago` / `just now`
      */
-    fun ago(epochMillis: Long, nowMillis: Long): String {
-        val diff = (nowMillis - epochMillis).coerceAtLeast(0L)
+    fun ago(epochMillis: Long, nowMillis: Long): String =
+        agoMillis((nowMillis - epochMillis).coerceAtLeast(0L))
+
+    /**
+     * 「どれくらい前か」を**経過時間から**表す。
+     *
+     * 既に経過時間が分かっている場合（通知の判定など）に使う。
+     * `ago(epoch, now)` に経過時間を渡すと **必ず `just now` になる**
+     * （未来の時刻として計算されるため）ので、経路を分けてある。
+     */
+    fun agoMillis(elapsedMillis: Long): String {
+        val diff = elapsedMillis.coerceAtLeast(0L)
         val minutes = diff / 60_000
         val hours = minutes / 60
         val days = hours / 24

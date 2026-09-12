@@ -18,6 +18,15 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+      12時間ごとの通知（PLAN-android.md Phase 3）。
+      targetSdk 34 のため実行時許可が必要（API 33+）。
+      未許可でもアプリの他の機能は全て動く。
+      **FCM は使わない。** サーバーを介さず端末内で完結させる
+      （通知のためにデータを外に出さないため）。
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -83,6 +92,16 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_usage_mini_info" />
         </receiver>
+
+        <!--
+          12時間ごとの通知アラームを受け取る。
+          `exported="false"` が必須。この Intent は自分自身の
+          `PendingIntent` からしか飛んでこないため、外部に開く必要がない。
+        -->
+        <receiver
+            android:name=".notify.NotifyAlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
     </application>
 

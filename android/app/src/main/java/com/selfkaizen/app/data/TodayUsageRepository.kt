@@ -48,4 +48,34 @@ class TodayUsageRepository(
                 .toFloat()
         )
     }
+
+    /**
+     * 指定日の合計。
+     *
+     * **null と 0 を区別する。**
+     * 集計行が無い（= その日のデータが無い）場合は null を返す。
+     * 0 に潰すと「0m 使った日」と「データが無い日」が同じになり、
+     * 通知が昨日の振り返りを出すかどうかを誤判定する。
+     *
+     * @return 合計ミリ秒。その日の集計行が1つも無ければ null
+     */
+    suspend fun totalFor(date: LocalDate): Long? {
+        val rows = dao.summariesForDate(date.toString())
+        return if (rows.isEmpty()) null else rows.sumOf { it.totalMillis }
+    }
 }
+
+/**
+ * データが読めないときのプレースホルダ。
+ *
+ * 状態は権限の有無で `NO_PERMISSION` / `STALE` に落ちるため、
+ * **数字は表示されない**（[com.selfkaizen.app.data.condition] 参照）。
+ */
+fun unknownTodayUsage() = TodayUsage(
+    todayMillis = 0L,
+    limitMillis = 0L,
+    status = UsageStatus.WITHIN_LIMIT,
+    lastCollectedAt = null,
+    remainingMillis = 0L,
+    fraction = 0f
+)

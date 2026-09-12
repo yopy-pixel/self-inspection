@@ -8,6 +8,7 @@ import android.widget.RemoteViews
 import com.selfkaizen.app.MainActivity
 import com.selfkaizen.app.R
 import com.selfkaizen.app.data.TodayUsage
+import com.selfkaizen.app.data.UsageCondition
 import com.selfkaizen.app.ui.DurationFormat
 
 /**
@@ -48,22 +49,22 @@ object WidgetRenderer {
     // ------------------------------------------------------------------
 
     /** 大きい数字。データが信用できないときは数字を出さない。 */
-    private fun totalText(context: Context, usage: TodayUsage, state: WidgetState.State): String =
+    private fun totalText(context: Context, usage: TodayUsage, state: UsageCondition): String =
         when (state) {
             // 古い値・権限なしで数字を出すと「使っていない」と誤読される。
             // **嘘の数字より記号の方がまし。**
-            WidgetState.State.NO_PERMISSION,
-            WidgetState.State.STALE -> context.getString(R.string.widget_none)
+            UsageCondition.NO_PERMISSION,
+            UsageCondition.STALE -> context.getString(R.string.widget_none)
 
             // 上限が無くても、今日どれだけ使ったかは出す価値がある。
             else -> DurationFormat.long(usage.todayMillis)
         }
 
     /** ミニ用の `3:42`。 */
-    private fun compactText(context: Context, usage: TodayUsage, state: WidgetState.State): String =
+    private fun compactText(context: Context, usage: TodayUsage, state: UsageCondition): String =
         when (state) {
-            WidgetState.State.NO_PERMISSION,
-            WidgetState.State.STALE -> context.getString(R.string.widget_none)
+            UsageCondition.NO_PERMISSION,
+            UsageCondition.STALE -> context.getString(R.string.widget_none)
             else -> DurationFormat.hourMinute(usage.todayMillis)
         }
 
@@ -74,19 +75,21 @@ object WidgetRenderer {
      * 上限が無い / 権限が無い / 収集が止まっている場合は、
      * **その事実を優先して出す**（数字より先に知るべき情報のため）。
      */
-    private fun detailText(context: Context, usage: TodayUsage, state: WidgetState.State): String =
+    private fun detailText(context: Context, usage: TodayUsage, state: UsageCondition): String =
         when (state) {
-            WidgetState.State.NO_PERMISSION ->
+            UsageCondition.NO_PERMISSION ->
                 context.getString(R.string.widget_no_permission)
 
-            WidgetState.State.STALE -> {
+            UsageCondition.STALE -> {
+                // 未収集（null）を epoch 0 として扱うと
+                // 「20000d ago」と表示されてしまう。事実をそのまま出す。
                 val ago = usage.lastCollectedAt
                     ?.let { DurationFormat.ago(it, System.currentTimeMillis()) }
-                    ?: DurationFormat.ago(0L, System.currentTimeMillis())
+                    ?: context.getString(R.string.label_never_collected)
                 context.getString(R.string.widget_stale, ago)
             }
 
-            WidgetState.State.DISABLED ->
+            UsageCondition.DISABLED ->
                 context.getString(R.string.state_disabled)
 
             else -> {
@@ -94,7 +97,7 @@ object WidgetRenderer {
                     R.string.label_limit,
                     DurationFormat.limit(usage.limitMillis)
                 )
-                val stateWord = if (state == WidgetState.State.OVER) {
+                val stateWord = if (state == UsageCondition.OVER) {
                     context.getString(
                         R.string.state_over,
                         DurationFormat.long(-usage.remainingMillis)
@@ -110,7 +113,7 @@ object WidgetRenderer {
         }
 
     /** バーの塗りと表示可否。 */
-    private fun applyBar(views: RemoteViews, usage: TodayUsage, state: WidgetState.State) {
+    private fun applyBar(views: RemoteViews, usage: TodayUsage, state: UsageCondition) {
         if (!WidgetState.shouldShowBar(state)) {
             // 上限が無い / データが信用できないときはバーを隠す。
             // 「何かに対する進捗」に見えると誤解を招く。

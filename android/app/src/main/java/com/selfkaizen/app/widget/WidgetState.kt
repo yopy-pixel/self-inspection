@@ -1,7 +1,8 @@
 package com.selfkaizen.app.widget
 
 import com.selfkaizen.app.data.TodayUsage
-import com.selfkaizen.app.rules.UsageStatus
+import com.selfkaizen.app.data.UsageCondition
+import com.selfkaizen.app.data.condition
 import kotlin.math.roundToInt
 
 /**
@@ -10,6 +11,10 @@ import kotlin.math.roundToInt
  * **Android に依存しない純粋なロジック**にしてある。
  * ウィジェットは「その場で気づく用」であり、
  * 判断を間違えると気づく機会そのものを失うため、境界をテストで固定する。
+ *
+ * 状態そのものの判断は [UsageCondition] に置いてある。
+ * 通知も同じ判断を使うので、ここで二重に持つと
+ * 「ウィジェットは超過、通知は超過じゃない」という食い違いが起きる。
  */
 object WidgetState {
 
@@ -17,52 +22,15 @@ object WidgetState {
     const val PROGRESS_MAX = 1000
 
     /**
-     * 収集が止まっているとみなすまでの時間。
+     * 状態を決める。
      *
-     * 収集は15分間隔なので、1時間止まっていれば異常と判断できる。
-     * ただし端末を触っていない時間帯もあるため、余裕を取って3時間とする。
-     */
-    const val STALE_AFTER_MILLIS = 3 * 60 * 60 * 1000L
-
-    /** ウィジェットが表示すべき状態。 */
-    enum class State {
-        /** 上限内。 */
-        LEFT,
-
-        /** 上限超過。 */
-        OVER,
-
-        /** 上限が設定されていない（`RuleSettings.dailyLimitEnabled = false`）。 */
-        DISABLED,
-
-        /** 使用状況アクセスが許可されていない。 */
-        NO_PERMISSION,
-
-        /** 収集が止まっている（アプリは動いているがデータが古い）。 */
-        STALE
-    }
-
-    /**
-     * 状態を決める。**優先順位がある。**
-     *
-     * 権限なし → 収集停止 → 上限なし → 超過 → 上限内、の順で判定する。
-     * 「データが古いのに『上限内』と表示する」のが最も危険なので、
-     * 古さの判定は上限の判定より先に置く。
+     * 中身は [condition] に委譲する。ウィジェットと通知で判断を共有するため。
      */
     fun stateOf(
         usage: TodayUsage,
         hasPermission: Boolean,
         now: Long = System.currentTimeMillis()
-    ): State = when {
-        !hasPermission -> State.NO_PERMISSION
-
-        usage.lastCollectedAt == null ||
-            now - usage.lastCollectedAt > STALE_AFTER_MILLIS -> State.STALE
-
-        usage.status == UsageStatus.DISABLED -> State.DISABLED
-        usage.status == UsageStatus.EXCEEDED -> State.OVER
-        else -> State.LEFT
-    }
+    ): UsageCondition = usage.condition(hasPermission, now)
 
     /** 塗り率（0.0〜1.0）を `ProgressBar` の progress 値に変換する。 */
     fun progressOf(fraction: Float): Int =
@@ -75,6 +43,6 @@ object WidgetState {
      * 「何かに対する進捗」に見えて誤解を招く。**隠す。**
      * 権限なし・収集停止のときも、古い値をバーで見せてはいけない。
      */
-    fun shouldShowBar(state: State): Boolean =
-        state == State.LEFT || state == State.OVER
+    fun shouldShowBar(state: UsageCondition): Boolean =
+        state == UsageCondition.LEFT || state == UsageCondition.OVER
 }

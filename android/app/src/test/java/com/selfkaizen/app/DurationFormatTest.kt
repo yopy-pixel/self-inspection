@@ -100,6 +100,22 @@ class DurationFormatTest {
         assertThat(DurationFormat.ago(now + 60_000L, now)).isEqualTo("just now")
     }
 
+    @Test
+    fun `経過時間そのものからも表せる`() {
+        // 通知の判定は「最後の収集からの経過」を持っており、
+        // 絶対時刻を持っていない。ここで ago() に経過時間を渡すと
+        // 未来の時刻として計算され、必ず just now になってしまう。
+        assertThat(DurationFormat.agoMillis(5 * 3600_000L)).isEqualTo("5h ago")
+        assertThat(DurationFormat.agoMillis(30 * 60_000L)).isEqualTo("30m ago")
+        assertThat(DurationFormat.agoMillis(3 * 24 * 3600_000L)).isEqualTo("3d ago")
+    }
+
+    @Test
+    fun `経過時間が0以下ならjust now`() {
+        assertThat(DurationFormat.agoMillis(0L)).isEqualTo("just now")
+        assertThat(DurationFormat.agoMillis(-60_000L)).isEqualTo("just now")
+    }
+
     // ---------------- 曜日 ----------------
 
     @Test

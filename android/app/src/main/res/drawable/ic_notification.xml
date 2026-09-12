@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  通知の小アイコン。
+  小アイコンは **単色（白）＋透明** でなければならない。
+  色付きの画像を渡すと Android 側でシルエット化され、
+  意図しない形になる（`ic_launcher_foreground` の流用を避ける理由）。
+  形はランキングの棒に合わせた（SPEC §1「記号で足りるなら言葉を使わない」）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4,13h3.2v7H4z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M10.4,8h3.2v12h-3.2z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M16.8,3h3.2v17h-3.2z" />
+</vector>

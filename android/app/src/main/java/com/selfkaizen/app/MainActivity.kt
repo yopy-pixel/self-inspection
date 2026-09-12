@@ -1,21 +1,27 @@
 package com.selfkaizen.app
 
+import android.Manifest
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.selfkaizen.app.collector.CollectionScheduler
+import com.selfkaizen.app.notify.NotifyScheduler
 import com.selfkaizen.app.ui.DashboardScreen
 import com.selfkaizen.app.ui.DashboardViewModel
 import com.selfkaizen.app.ui.PermissionScreen
@@ -53,6 +59,21 @@ class MainActivity : ComponentActivity() {
     /** 設定画面を表示中か。**タブは作らず**、この1フラグだけで切り替える（SPEC §6）。 */
     private var showSettings by mutableStateOf(false)
 
+    /**
+     * 通知許可（POST_NOTIFICATIONS）の要求。
+     *
+     * API 33+ で必要。**未許可でも他の機能は全て動く**ので、
+     * 拒否されたら黙って進む（通知だけが出なくなる）。
+     * 2回拒否すると OS がダイアログを出さなくなるため、
+     * 起動ごとに呼んでも無限に煩わすことはない。
+     */
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            // 許可された場合もされない場合も、やることは変わらない。
+            // 実際に出せるかは通知時に UsageNotifier.canPost() で判定する。
+            android.util.Log.i("MainActivity", "通知許可: $granted")
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hasAccess = checkUsageAccess()
@@ -62,6 +83,16 @@ class MainActivity : ComponentActivity() {
         // 必須の配線: これが無いと収集は端末再起動後（BootReceiver 経由）まで
         // 一度も走らない。KEEP 戦略なので毎回呼んでも二重登録にはならない。
         CollectionScheduler.schedulePeriodic(this)
+
+        // 12時間ごとの通知アラームを登録する。
+        //
+        // アラームは端末再起動で消えるため、BootReceiver でも再登録する。
+        // 同じ PendingIntent への再登録は置き換えになるので二重にはならない。
+        NotifyScheduler.schedule(this)
+
+        // 通知許可を求める。使用状況アクセスが未許可の段階で求めても
+        // 文脈が無いので、許可済みのときだけ聞く。
+        requestNotificationPermissionIfNeeded()
 
         // 定期同期も登録する。
         //
@@ -150,6 +181,12 @@ class MainActivity : ComponentActivity() {
             CollectionScheduler.collectNow(this)
         }
 
+        // 使用状況アクセスを許可した直後に通知許可も続けて聞く。
+        // ここで聞かないと、次回起動まで通知が出せないままになる。
+        if (!wasGranted && hasAccess) {
+            requestNotificationPermissionIfNeeded()
+        }
+
         // 表示中のデータを最新化する
         refreshTick++
     }
@@ -168,6 +205,26 @@ class MainActivity : ComponentActivity() {
             packageName
         )
         return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    /**
+     * 通知許可を求める（API 33+ のみ）。
+     *
+     * 使用状況アクセスが未許可のときは求めない。
+     * 「何も記録できていない」段階で通知の許可を求めても、
+     * ユーザーには何の通知か分からないため。
+     */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (!hasAccess) return
+
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) return
+
+        requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     /**

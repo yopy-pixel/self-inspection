@@ -105,4 +105,18 @@
       上限が無い場合も数字は出すが、バーは隠す。
     -->
     <string name="widget_none">—</string>
+
+    <!--
+      通知（`PLAN-android.md` Phase 3）。
+      **12時間に1回だけ。** 頻度を上げると読まれなくなり、
+      読まれない通知は「気づく機会」として機能しない。
+      文言はウィジェットと同じ語彙を使い回す（§1 の方針）。
+    -->
+    <string name="notification_channel">Screen time</string>
+    <string name="notification_channel_description">At most one reminder every 12 hours.</string>
+    <string name="notification_title_today">Today</string>
+    <string name="notification_title_yesterday">Yesterday</string>
+    <string name="notification_used">%1$s used</string>
+    <string name="notification_detail">%1$s used of %2$s</string>
+    <string name="notification_no_permission">Nothing is being recorded. Usage access is off.</string>
 </resources>
